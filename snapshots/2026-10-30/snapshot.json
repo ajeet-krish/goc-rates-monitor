@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "created_utc": "2026-11-01T04:16:12+00:00",
+    "created_utc": "2026-11-01T05:01:20+00:00",
     "schema_version": 1,
     "snapshot_date": "2026-10-30"
   },
@@ -50,6 +50,189 @@
         },
         "valet_label": "Benchmark bond yield, 5-year"
       }
+    },
+    "breaks": {
+      "events": [
+        {
+          "effective_date": "2026-03-06",
+          "effective_joint_date": "2026-03-06",
+          "incoming_coupon_percent": 3.5,
+          "incoming_coupon_unit": "percent",
+          "incoming_maturity": "2057-12-01",
+          "outgoing_coupon_percent": null,
+          "outgoing_coupon_unit": "percent",
+          "outgoing_maturity": null,
+          "tenor": "LONG"
+        },
+        {
+          "effective_date": "2026-06-23",
+          "effective_joint_date": "2026-06-23",
+          "incoming_coupon_percent": 3.25,
+          "incoming_coupon_unit": "percent",
+          "incoming_maturity": "2036-06-01",
+          "outgoing_coupon_percent": null,
+          "outgoing_coupon_unit": "percent",
+          "outgoing_maturity": null,
+          "tenor": "10Y"
+        },
+        {
+          "effective_date": "2026-08-06",
+          "effective_joint_date": "2026-08-06",
+          "incoming_coupon_percent": 2.75,
+          "incoming_coupon_unit": "percent",
+          "incoming_maturity": "2028-08-01",
+          "outgoing_coupon_percent": null,
+          "outgoing_coupon_unit": "percent",
+          "outgoing_maturity": null,
+          "tenor": "2Y"
+        },
+        {
+          "effective_date": "2026-09-10",
+          "effective_joint_date": "2026-09-10",
+          "incoming_coupon_percent": 3.0,
+          "incoming_coupon_unit": "percent",
+          "incoming_maturity": "2031-09-01",
+          "outgoing_coupon_percent": null,
+          "outgoing_coupon_unit": "percent",
+          "outgoing_maturity": null,
+          "tenor": "5Y"
+        },
+        {
+          "effective_date": "2026-09-10",
+          "effective_joint_date": "2026-09-10",
+          "incoming_coupon_percent": 2.75,
+          "incoming_coupon_unit": "percent",
+          "incoming_maturity": "2033-06-01",
+          "outgoing_coupon_percent": null,
+          "outgoing_coupon_unit": "percent",
+          "outgoing_maturity": null,
+          "tenor": "7Y"
+        },
+        {
+          "effective_date": "2026-10-23",
+          "effective_joint_date": "2026-10-23",
+          "incoming_coupon_percent": 3.0,
+          "incoming_coupon_unit": "percent",
+          "incoming_maturity": "2028-11-01",
+          "outgoing_coupon_percent": null,
+          "outgoing_coupon_unit": "percent",
+          "outgoing_maturity": null,
+          "tenor": "2Y"
+        },
+        {
+          "effective_date": "2026-10-23",
+          "effective_joint_date": "2026-10-23",
+          "incoming_coupon_percent": 3.5,
+          "incoming_coupon_unit": "percent",
+          "incoming_maturity": "2029-09-01",
+          "outgoing_coupon_percent": null,
+          "outgoing_coupon_unit": "percent",
+          "outgoing_maturity": null,
+          "tenor": "3Y"
+        }
+      ],
+      "feed_sha256": "beebda0550350a07e3d792124cfd96f1c905656d5a6bd75ac7d2e3951bb7b774",
+      "feed_source": "bench_CDN.pdf",
+      "feed_vintage": "2026-11-01",
+      "method": "benchmark_switch_dod_gate_v1",
+      "print_date": "2026-10-29",
+      "records": [
+        {
+          "calendar_gap": false,
+          "current_date": "2026-10-29",
+          "current_yield_percent": 3.36,
+          "current_yield_unit": "percent",
+          "dod_bp": -5.000000000000027,
+          "dod_quantity": {
+            "quality": "observed",
+            "source_id": "derived:dod_gate",
+            "unit": "basis_points",
+            "value": -5.000000000000027
+          },
+          "dod_unit": "basis_points",
+          "gate": "comparable",
+          "history_count": 2000,
+          "history_count_unit": "count",
+          "prev_date": "2026-10-28",
+          "prev_yield_percent": 3.41,
+          "prev_yield_unit": "percent",
+          "source_id": "derived:dod_gate",
+          "switch_in_window": false,
+          "tenor": "2Y"
+        },
+        {
+          "calendar_gap": false,
+          "current_date": "2026-10-29",
+          "current_yield_percent": 3.58,
+          "current_yield_unit": "percent",
+          "dod_bp": -4.0000000000000036,
+          "dod_quantity": {
+            "quality": "observed",
+            "source_id": "derived:dod_gate",
+            "unit": "basis_points",
+            "value": -4.0000000000000036
+          },
+          "dod_unit": "basis_points",
+          "gate": "comparable",
+          "history_count": 2000,
+          "history_count_unit": "count",
+          "prev_date": "2026-10-28",
+          "prev_yield_percent": 3.62,
+          "prev_yield_unit": "percent",
+          "source_id": "derived:dod_gate",
+          "switch_in_window": false,
+          "tenor": "5Y"
+        },
+        {
+          "calendar_gap": false,
+          "current_date": "2026-10-29",
+          "current_yield_percent": 3.84,
+          "current_yield_unit": "percent",
+          "dod_bp": -3.000000000000025,
+          "dod_quantity": {
+            "quality": "observed",
+            "source_id": "derived:dod_gate",
+            "unit": "basis_points",
+            "value": -3.000000000000025
+          },
+          "dod_unit": "basis_points",
+          "gate": "comparable",
+          "history_count": 2000,
+          "history_count_unit": "count",
+          "prev_date": "2026-10-28",
+          "prev_yield_percent": 3.87,
+          "prev_yield_unit": "percent",
+          "source_id": "derived:dod_gate",
+          "switch_in_window": false,
+          "tenor": "10Y"
+        },
+        {
+          "calendar_gap": false,
+          "current_date": "2026-10-29",
+          "current_yield_percent": 4.13,
+          "current_yield_unit": "percent",
+          "dod_bp": -2.000000000000046,
+          "dod_quantity": {
+            "quality": "observed",
+            "source_id": "derived:dod_gate",
+            "unit": "basis_points",
+            "value": -2.000000000000046
+          },
+          "dod_unit": "basis_points",
+          "gate": "comparable",
+          "history_count": 2000,
+          "history_count_unit": "count",
+          "prev_date": "2026-10-28",
+          "prev_yield_percent": 4.15,
+          "prev_yield_unit": "percent",
+          "source_id": "derived:dod_gate",
+          "switch_in_window": false,
+          "tenor": "30Y"
+        }
+      ],
+      "snapshot_date": "2026-10-30",
+      "threshold_bp": 15.0,
+      "threshold_unit": "basis_points"
     },
     "carry": {
       "carry_roll_bp": 96.0,
@@ -198,20 +381,26 @@
     }
   },
   "provenance": {
+    "benchmark_switches": {
+      "retrieved_utc": "2026-11-01T05:01:20+00:00",
+      "sha256": "beebda0550350a07e3d792124cfd96f1c905656d5a6bd75ac7d2e3951bb7b774",
+      "source_url": "https://www.bankofcanada.ca/stats/assets/pdf/bench_CDN.pdf",
+      "vintage": "2026-11-01"
+    },
     "fred": {
-      "retrieved_utc": "2026-11-01T04:16:12+00:00",
+      "retrieved_utc": "2026-11-01T05:01:20+00:00",
       "source_url": "https://api.stlouisfed.org/fred/series/observations",
       "vintage": "2026-10-30"
     },
     "statcan_cpi": {
       "reason": "CPI bulk agreement failed: basket aggregate for 'C01' 1.8700 disagrees with registry 2.4000 beyond 0.0300 pp",
-      "retrieved_utc": "2026-11-01T04:16:12+00:00",
+      "retrieved_utc": "2026-11-01T05:01:20+00:00",
       "source_url": "https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/18100004/en",
       "status": "missing",
       "vintage": "2025-05"
     },
     "valet": {
-      "retrieved_utc": "2026-11-01T04:16:12+00:00",
+      "retrieved_utc": "2026-11-01T05:01:20+00:00",
       "source_url": "https://www.bankofcanada.ca/valet/observations/group/bond_yields_benchmark/json",
       "vintage": "2026-10-29"
     }

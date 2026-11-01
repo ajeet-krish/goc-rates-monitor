@@ -1,5 +1,5 @@
 {
-  "checked_utc": "2026-11-01T04:16:12+00:00",
+  "checked_utc": "2026-11-01T05:01:20+00:00",
   "checks": [
     {
       "detail": "canonical JSON round trip succeeded",
@@ -12,7 +12,7 @@
       "passed": true
     },
     {
-      "detail": "all 12 quantities carry a unit",
+      "detail": "all 16 quantities carry a unit",
       "id": "V03",
       "passed": true
     },
@@ -72,7 +72,7 @@
       "passed": true
     },
     {
-      "detail": "all 8 derived quantities carry units and a derived source (unit: mixed)",
+      "detail": "all 12 derived quantities carry units and a derived source (unit: mixed)",
       "id": "V15",
       "passed": true
     },
@@ -110,12 +110,17 @@
       "detail": "V22 skipped, inflation missing with CPI degraded (unit: mixed)",
       "id": "V22",
       "passed": true
+    },
+    {
+      "detail": "breaks benchmark_switch_dod_gate_v1 with 4 tenors, dod worst 0.0000 bp within 1.0 bp, threshold 15.0 bp, feed 2026-11-01 sha beebda055035 (unit: mixed)",
+      "id": "V23",
+      "passed": true
     }
   ],
   "failed_count": 0,
   "passed": true,
-  "passed_count": 22,
-  "snapshot_sha256": "eae33396810d089e83f8372643df485a30786929e70bdd1d7270ffe308a6d761",
+  "passed_count": 23,
+  "snapshot_sha256": "ee0ad6c367680a9f2bb0a4019e2fabb3ee66e4ffa13cfa9f876c7e81293fae35",
   "tolerance_bp": 1.0,
   "tolerance_unit": "basis_points"
 }
