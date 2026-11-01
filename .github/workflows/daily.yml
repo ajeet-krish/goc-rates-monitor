@@ -118,8 +118,8 @@ jobs:
       - run: npm ci
       - run: npm run build:data
       - run: npm run typecheck
-      - run: npm test
       - run: npm run build
+      - run: npm test
       - run: |
           set -euo pipefail
           LATEST="$(node -e "const fs = require('fs'); const doc = JSON.parse(fs.readFileSync('./dist/data/index.json', 'utf8')); console.log(doc.latest)")"
