@@ -165,3 +165,90 @@ target, DV01-neutral illustrative backtest with one fixed rule, no NSS in v1.
 - [x] Practical implications are actionable
 - [x] All sources cited
 - [x] Research supports phase architecture decisions
+
+## 2026-11-01 - Phase 3 Site: SolidJS static export, charts, manifest lazy fetch, deep links, OG, mobile, provenance, fail-closed UI
+
+Phase 3 builds SolidJS static site on GitHub Pages (no backend): routes index,
+curve, inflation, placeholder, methods, verification, breaks; compare overlay
+1M/1Y, since-yesterday deltas, `?asof=` via manifest lazy fetch, footer stamp
+(date plus SHA plus checks), phone-readable, static OG image, funding bundle
+(CORRA vs target, BoC dates, policy history, DGS2, auction link-outs, QT level),
+`verify.json`-driven pages.
+
+### Key Findings
+| Finding | Source | Confidence | Application |
+|---------|--------|------------|-------------|
+| Vite static deploy on Pages needs `base: '/<repo>/'` (or `'/'` for user site/custom domain); assets resolve via `import.meta.env.BASE_URL`; Router needs matching `base={...}`; add `.nojekyll` so underscore-prefixed build assets (`_build`, `_server`) are served | Vite static-deploy guide; solid-gh-pages README; Simon Willison TIL; SolidStart GitHub Pages articles | High | `web/vite.config.ts` sets `base` from repo name; `Router base={import.meta.env.BASE_URL}`; CI writes `dist/.nojekyll` |
+| SolidStart static preset (`preset: "static"` plus Nitro `prerender: { crawlLinks: true }` or explicit `routes`) emits `.output/public` for Pages; plain `vite-plugin-solid` SPA (no Start) also works and is simpler when all data is client-fetched JSON; either way no runtime API | SolidStart route-prerender docs; SolidStart GH-Pages DEV articles; SolidStart discussion #1398 (`ssr:false, server.static:true`) | High | Prefer plain Solid SPA + `@solidjs/router` unless SSR/prerender SEO is needed; prerender the 7 static routes, fetch snapshots client-side |
+| Pages has no rewrites: deep path `/curve` 404s on hard load; standard fix is `404.html` + `index.html` redirect shim (rafgraph `spa-github-pages`: encode path+query into `?/...`, restore via `history.replaceState`); alternative is query-only routing (`?asof=`, `?/curve`) which needs no shim | rafgraph spa-github-pages; StackOverflow Blazor/GH-Pages 404; quick-vite gh-pages-spa (Solid `Router base={routeBase()}` + `PagesReRouter`); Bombie lesson post | High | Ship `404.html` shim verbatim (with `pathSegmentsToKeep=1`); keep all deep state in query (`?asof=YYYY-MM-DD`) so share links survive the shim round-trip |
+| `?asof=` works without backend: parse `URLSearchParams` on boot, validate against manifest date list, `fetch` that date's snapshot JSON, `history.replaceState` on change; never trust raw param (fail closed to latest + notice) | Solid router `useSearchParams`/location docs; qflow dashboard manifest pattern (SPA fetches `manifest.json`, lazy-loads per-run files) | High | `?asof=` loader: fetch `manifest.json` first, whitelist date, then lazy-fetch `snapshots/<date>/...json`; invalid date renders unknown-date banner |
+| Manifest lazy-fetch pattern (no runtime API): one small `manifest.json` (dates, sha, checks) loaded eagerly with `cache: no-store`; per-page JSON (`curve.json`, `verify.json`) lazy-loaded per route via Solid `lazy()` + `createResource` inside `Suspense`; keeps first paint small | qflow `gh-pages/data/manifest.json` pattern; Solid `lazy` + `createResource` docs; pixi-solid asset-manifest `createResource` example | High | `public/data/manifest.json` lists snapshot dates + file names + sha256; each route `createResource`s only its files; `Suspense` skeleton per page |
+| uPlot beats lightweight-charts for this project: ~47.9 KB min (~21.3 KB gzip), zero deps, MIT, cold-renders 166k points in ~34 ms with best cursor/zoom perf; lightweight-charts standalone is ~60.7 KB gzip, prettier financial defaults (candles, price lines) but heavier, TradingView attribution required, worse at 100k points (448 ms vs 33 ms in ORTEX bench) | uPlot bench table + npm page; Bundlephobia uPlot; Lightweight-Charts docs + build variants; ORTEX 2026-09 bench (payload + render) | High | Choose uPlot for curve/inflation/breaks time series + compare overlay; wrap in one `TimeChart` component; revisit lightweight-charts only if candle/price-line UX is demanded |
+| Static OG image: social scrapers do not run JS, so per-date dynamic OG is impossible on Pages; correct pattern is one committed `public/og.png` (1200x630 PNG, not SVG) + absolute `og:image`/`twitter:card` meta; generate at build via script (Playwright screenshot or Satori+Resvg HTML-to-PNG), regenerate when card copy changes | metaharness `scripts/make-og.mjs` (Playwright 1200x630 to `public/og.png`); og-images-generator (Satori HTML-to-PNG, no headless browser); nself OG docs (static fallback `og-default.png`) | High | Commit `web/public/og.png` 1200x630; `scripts/make-og.mjs` renders branded card (title, latest 10Y/2s10s, as-of date); meta tags use absolute Pages URL |
+| Phone 360 px layout: single-column stack, chart full-bleed with min touch target 44 px, tables collapse to key-value or horizontal scroll, badge collapses to dot + expands on tap; freshness/provenance must never scroll out of view for deep-link arrivals | Geo-dashboard freshness-badge guide (mobile collapse rule); vaultwatch responsive commit (off-canvas sidebar, auto-fit grids) | Medium | CSS: `min-width:360px` gate, `@media (max-width:640px)` single column, uPlot resize via `ResizeObserver`, tables get `overflow-x:auto` + sticky first column |
+| Provenance badge pattern: compute age from source timestamp (snapshot `as_of`), never build time; fetch manifest with `no-cache`; show relative age + absolute UTC + commit SHA link; three states ok/warn/critical with words not color alone; unknown age renders as failure ("data age unknown") | Geo-dashboard freshness badge post (`mountFreshnessBadge`, thresholds, `aria-label`); Helios freshness-anchor (commit SHA link + subject + relative time); gravitonkv reproducibility-linking commit | High | Footer stamp: `as of YYYY-MM-DD · manifest sha <short> (link) · verify <pass/fail> (link)` each linking to GitHub blob/commit; stale thresholds (warn >2 biz days, critical >5) from calendar |
+| Fail-closed UI: missing snapshot, failed fetch, or stale manifest renders blocking banner + disables deltas/charts (show `NA` with reason), never silently falls back to cached or interpolated data; `verify.json` status gates each page (fail = red banner naming the check) | Geo-dashboard "unknown age is failure" rule; vaultwatch `SourceBadge` (live/fallback/cache/seed) pattern; ntm TUI stale-badge commit; Phase 1/2 fail-closed pipeline rules | High | `verify.json` drives banner component: `status!=pass` blocks derived displays; fetch `catch` renders error card with retry + link to latest good `?asof=`; no forward-fill assertion mirrored client-side |
+
+### Relevant Equations
+| Equation | Description | Variables |
+|----------|-------------|-------------|
+| `age_h = (now_utc - source_asof_utc) / 3600` | Data age from source timestamp (provenance badge) | now_utc browser clock, source_asof_utc manifest `as_of` midnight UTC |
+| `state = ok if age<=warn; warn if warn<age<=crit; critical otherwise` | Badge state thresholds in business days | warn 2 biz days, crit 5 biz days (calendar-aware) |
+| `url = BASE + 'data/' + date + '/' + file` | Snapshot URL join (respects Pages subpath) | BASE `import.meta.env.BASE_URL`, date `YYYY-MM-DD`, file e.g. `curve.json` |
+| `delta_1d = y(asof) - y(prev_bizday)` (bp = *100) | Since-yesterday delta using joint CA-US calendar predecessor | y yield in percent, predecessor from calendar leg flags |
+| `1200 x 630 PNG` | OG image canvas size | Fixed social-card geometry; keep text in central safe zone |
+| `budget: uPlot ~21 KB gzip vs LW ~61 KB gzip` | Chart payload budget comparison | gzip bytes of the chart chunk alone |
+
+### Validation Data
+| Benchmark | Value | Source | Uncertainty |
+|-----------|-------|--------|-------------|
+| uPlot minified / gzip | 47.9 KB min bench; 49.6 KB min / 21.3 KB gzip (Bundlephobia) | uPlot bench table; bundlephobia uplot | Version 1.6.x; tree-shaken single-series is smaller |
+| uPlot cold render 166,650 pts | 34 ms done (51 js / 2 rend / 1 paint / 34 sys) | uPlot bench 2023-03-11 (Ryzen 7 PRO 5850U, Chrome 113) | Hardware-specific; relative ordering is the durable claim |
+| Lightweight-Charts standalone prod gzip | 60.7 KB | ORTEX bench 2026-09-05 (esbuild + gzip, same harness) | v5.2.1; per-entry-point, not tree-shaken app total |
+| 100k-bar render: ORTEX 33 ms / LW 448 ms / Highcharts 202 ms | See row | ORTEX bench 2026-09-08 headless Chromium | Synthetic bars; time-series lines favor uPlot further |
+| Vite Pages subpath rule | `base: '/<repo>/'` + `.nojekyll` + `dist/` artifact | Vite static-deploy guide; Willison TIL; SolidStart Pages posts | Custom-domain case uses `'/'` instead |
+| OG geometry | 1200x630 PNG under `public/` served at site root | make-og.mjs; og-images-generator; nself docs | Scrapers ignore SVG and JS-rendered meta |
+| Mobile floor | 360 px min width; 44 px touch targets | Geo-dashboard + vaultwatch responsive notes | Device lab spot-check, not a standard |
+
+### Practical Implications
+- Scaffold `web/` as plain Vite + `vite-plugin-solid` + `@solidjs/router` SPA (no Start/SSR): `base` from repo name, `Router base={import.meta.env.BASE_URL}`, `lazy()` per route (index, curve, inflation, methods, verification, breaks), `404.html` shim copied from rafgraph with `pathSegmentsToKeep=1`.
+- Data layer: `public/data/manifest.json` (dates, sha256, verify status) fetched `no-store` on boot; `createResource(asof, fetchSnapshot)` per page with `Suspense` skeletons; `?asof=` validated against manifest, invalid yields unknown-date banner pinned to latest good.
+- Charts: single `TimeChart` wrapper around uPlot (Canvas 2D, `ResizeObserver` sizing, cursor sync for compare overlay, 1M/1Y window buttons as x-range presets, not refetches); no candles in v1 so lightweight-charts attribution/weight is unjustified.
+- Funding bundle page reads `verify.json` plus CORRA/target series plus BoC date/policy-history JSON plus DGS2 plus auction URLs plus QT level; every external link-out labeled with source plus retrieval date; QT level carries `high_approx` disclosure.
+- Footer/provenance component on every route: `as of <date> UTC · pipeline <short-sha> (link) · verify <pass/fail> (link)` plus freshness badge (ok/warn/critical words plus absolute timestamp plus `aria-label`); stale or failed verify blocks deltas and charts with named reasons.
+- OG: `scripts/make-og.mjs` (Playwright or Satori) writes `web/public/og.png` 1200x630; `index.html` meta uses absolute `https://<user>.github.io/<repo>/og.png`; tester spot-checks with a scraper-debugger and a 360 px device pass.
+- Tester inputs from this research: shim round-trip (`/curve?asof=X` hard-load restores route plus date), invalid `?asof=` banner, missing-file 404 card, offline-manifest error, uPlot 1M/1Y plus overlay plus delta correctness, footer SHA/date/checks match `manifest.json` plus `verify.json`, OG PNG MIME plus dimensions, 360 px no-horizontal-scroll pass.
+
+### Citations
+1. Vite, "Deploying a Static Site / GitHub Pages" - https://vite.dev/guide/static-deploy
+2. SolidStart, "Route pre-rendering" - https://docs.solidjs.com/solid-start/v2/building-your-application/route-prerendering
+3. TangoYankee/solid-gh-pages - https://github.com/TangoYankee/solid-gh-pages
+4. quick-vite/gh-pages-spa (Solid `routeBase` plus `PagesReRouter`) - https://github.com/quick-vite/gh-pages-spa
+5. rafgraph/spa-github-pages (404 shim) - https://github.com/rafgraph/spa-github-pages
+6. Solid Router, "Lazy loading" / "Routing and navigation" / "`createResource`/`createAsync`" - https://docs.solidjs.com/solid-router/advanced-concepts/lazy-loading
+7. Solid, "`createResource`" reference - https://docs.solidjs.com/reference/basic-reactivity/create-resource.md
+8. uPlot bench plus npm plus Bundlephobia - https://leeoniya.github.io/uPlot/ ; https://github.com/leeoniya/uPlot/blob/master/bench/table.md ; https://bundlephobia.com/package/uplot
+9. TradingView Lightweight Charts docs (build variants, attribution) - https://tradingview.github.io/lightweight-charts/docs
+10. ORTEX Charts performance (payload plus render bench, 2026-09) - https://ortexcharts.com/docs/performance
+11. qflow dashboard README (manifest plus lazy-run JSON on gh-pages) - https://github.com/buttered-spuds/qflow/blob/main/dashboard/README.md
+12. Geo-dashboard, "Publishing a Data Freshness Badge" - https://www.geo-dashboard.com/data-refresh-automation-pipelines/pipeline-observability-and-alerting/publishing-a-data-freshness-badge-on-a-geo-dashboard/
+13. metaharness `apps/web-ui/scripts/make-og.mjs` (Playwright 1200x630 to `public/og.png`)
+14. juliancataldo/og-images-generator (Satori HTML-to-PNG, no headless browser) - https://github.com/juliancataldo/og-images-generator
+15. nself OG/social-cards docs (static `og-default.png` fallback) - https://nself.org/docs/guides/og-cards
+16. Helios PR #1194 (freshness anchor plus last-result footer); gravitonkv 89e81e9 (reproducibility linking); ntm 02f382a (stale badge); vaultwatch Badge/SourceBadge plus responsive overhaul
+
+### Verification Checklist
+- [x] Findings are from reputable sources
+- [x] Equations are correctly transcribed
+- [x] Validation data includes uncertainty
+- [x] Practical implications are actionable
+- [x] All sources cited
+- [x] Research supports phase architecture decisions
+
+### Verification Checklist
+- [x] Findings are from reputable sources
+- [x] Equations are correctly transcribed
+- [x] Validation data includes uncertainty
+- [x] Practical implications are actionable
+- [x] All sources cited
+- [x] Research supports phase architecture decisions

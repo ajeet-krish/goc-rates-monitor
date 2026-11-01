@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>GoC Rates Monitor</title>
+    <script type="text/javascript">
+      // Single Page Apps for GitHub Pages, rafgraph spa-github-pages.
+      // Keeps pathSegmentsToKeep=1 so /goc-rates-monitor/<route>?asof=X survives hard loads.
+      (function (l) {
+        if (l.search[1] === "/") {
+          var decoded = l.search
+            .slice(1)
+            .split("&")
+            .map(function (s) {
+              return s.replace(/~and~/g, "&");
+            })
+            .join("?");
+          window.history.replaceState(
+            null,
+            "",
+            l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      })(window.location);
+    </script>
+  </head>
+  <body></body>
+</html>

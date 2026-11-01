@@ -2,6 +2,41 @@
 
 Last updated: 2026-11-01
 
+## 2026-11-01 - Phase 3: Test Report
+
+Phase 3 site shell suite in `web/tests/` (node:test, no new framework).
+Run with `npm test` in `/Users/ajeet/Projects/goc-rates-monitor/web`,
+plus `npm run build` and `npm run typecheck` (both clean).
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| Validators reject bad unit, quality, source grammar, overlong source | PASS | Benchmark quantity mutations each throw ValidationError |
+| Validators reject NaN and Infinity | PASS | NaN, Infinity, negative Infinity all throw on value |
+| Missing quality null accepted, non null rejected | PASS | Matches closed quality semantics |
+| Asof mismatch rejected | PASS | snapshot_date versus requested asof detail names both dates |
+| Verify digest mismatch rejected, match accepted | PASS | Published digest binding holds |
+| Empty verify, non V01-V18, duplicate ids rejected | PASS | Exactly 18 checks V01 to V18 enforced |
+| passed_count, failed_count, passed flag consistency rejected | PASS | Three inconsistency probes all fail closed |
+| 5MiB cap and 15s timeout pinned | PASS | Constants asserted, oversize declared and streamed bodies rejected, hung fetch times out |
+| Excessive knots, spreads, backtest, quantities, dates, provenance rejected | PASS | 11 knots, 2001 spreads, 2001 backtest, 10001 quantities, 2001 dates, 65 provenance entries |
+| Deep nested recursion rejected | PASS | 80 level nesting trips the 64 level cap |
+| Asof invalid versus absent versus unknown | PASS | Malformed kept distinct from absent, unknown well formed falls back to latest with banner |
+| Router navigate, resource keys, wildcard fallback, 404 asof preserve | PASS | Static wiring checks on App.tsx, 404.html, index.html |
+| Phone 360 no scroll | PASS | overflow-x auto, max-width 100 percent, 640px collapse, 44px touch targets |
+| Footer stamp real counts tolerance method | PASS | passed_count, checks.length, tolerance pair, curveMethod, sha, unknownDate all rendered |
+| Mock only via VITE_USE_MOCK dynamic import, bundle clean | PASS | No static fixture import, fresh dist chunks lack mock fixture and MOCK_DATE |
+| Loading gate blocked no derived | PASS | Loading, error, missing, and failed states all block with NA messaging |
+| build-data valid triple publishes with index | PASS | Sandbox run exits 0, dates and latest correct |
+| build-data tampered snapshot fails sha no publish | PASS | Trailing byte trips digest mismatch, nothing published |
+| build-data verify mismatch fails | PASS | Wrong snapshot_sha256 exits nonzero, nothing published |
+| build-data missing manifest fails | PASS | Refuses to publish without manifest |
+| build-data malformed dirs ignored | PASS | latest, 2026-13-99, notes.txt, 2026-02-30 skipped |
+| build-data stale prune | PASS | Removed date pruned from output with log line |
+
+Coverage summary: 53 passed, 0 failed (38 validate plus asof, 9 shell plus router, 6 build-data). Happy path covered (valid triple publish, digest match, known date resolve). Edge cases covered (missing quality null, empty asof value, impossible calendar dates, malformed dir names, stale prune). Error conditions covered (unit, quality, source, finiteness, asof and digest mismatch, count inconsistency, all collection caps, nesting cap, oversize, timeout, tampered snapshot, verify mismatch, missing manifest). New files `web/tests/phase3-validate.test.mjs`, `web/tests/phase3-shell.test.mjs`, `web/tests/phase3-build-data.test.mjs` plus `web/tests/ts-resolve.mjs` and `web/tests/register.mjs` loader shim; `test` script added to `web/package.json`. No source changes needed.
+
+Failure analysis: two interim test faults, both in new test code. The asof probes first passed full paths to readAsofState, but the app passes location.search, so inputs were corrected to bare query strings. The fetch layer reads import.meta.env, which is undefined under plain node, so the test-only loader shim pins the same local defaults Vite provides; production code untouched. No product code defect found.
+
 ## 2026-11-01 - Phase 1: Test Report
 
 Foundation suite plus review follow up negatives and boundary tests.

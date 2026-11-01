@@ -1,0 +1,131 @@
+import { Show } from "solid-js";
+import Chart from "../components/Chart";
+import DataTable from "../components/DataTable";
+import SectionState from "../components/SectionState";
+import type { SnapshotDoc } from "../lib/types";
+import { fmtBp, fmtYieldPct } from "../lib/format";
+
+interface Props {
+  snapshot: SnapshotDoc | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export default function IndexPage(props: Props) {
+  const knots = () => props.snapshot?.observations.curve?.knots ?? [];
+  const twoY = () => knots().find((k) => k.tenor === "2Y")?.yield_percent ?? null;
+  const tenY = () => knots().find((k) => k.tenor === "10Y")?.yield_percent ?? null;
+  // No recompute: the desk reads the stored backtest slope. NA until the
+  // pipeline publishes a slope series for this date.
+  const slope = () => {
+    const backtest = props.snapshot?.observations.backtest;
+    if (!backtest || backtest.slopes_bp.length === 0) return null;
+    const last = backtest.slopes_bp[backtest.slopes_bp.length - 1];
+    return Number.isFinite(last) ? last : null;
+  };
+
+  return (
+    <section aria-label="Desk today">
+      <div class="hero-ledger">
+        <div>
+          <p class="hero-kicker">Internal research desk: read the curve first</p>
+          <h2 class="hero-headline">The live curve is the thesis.</h2>
+          <p class="hero-dek">
+            Government of Canada benchmark yields to maturity, treated as a par
+            approximation with log discount interpolation. Flat ends, 30Y proxy at
+            the long end. Everything else on this desk is commentary on this line.
+          </p>
+          <SectionState
+            loading={props.loading}
+            error={props.error}
+            empty={!props.loading && !props.error && knots().length === 0}
+          >
+            <DataTable
+              caption="Latest benchmark knot yields in percent yield and discounts as unitless ratios"
+              columns={[
+                { key: "tenor", header: "Tenor" },
+                { key: "yield", header: "Yield", unit: "percent_yield" },
+                { key: "discount", header: "Discount", unit: "unitless_ratio" },
+              ]}
+              rows={knots().map((k) => ({
+                tenor: k.tenor,
+                yield: fmtYieldPct(k.yield_percent),
+                discount: Number(k.discount).toFixed(6),
+              }))}
+            />
+          </SectionState>
+        </div>
+        <div class="ledger-card">
+          <h2>Today on the desk</h2>
+          <SectionState
+            loading={props.loading}
+            error={props.error}
+            empty={!props.loading && !props.error && !props.snapshot}
+          >
+            <table class="kv-table">
+              <tbody>
+                <tr>
+                  <th scope="row">2Y yield</th>
+                  <td class="num">
+                    {fmtYieldPct(twoY())}
+                    <span class="unit-tag">percent_yield</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">10Y yield</th>
+                  <td class="num">
+                    {fmtYieldPct(tenY())}
+                    <span class="unit-tag">percent_yield</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">2s10s slope</th>
+                  <td class="num">
+                    {fmtBp(slope())}
+                    <span class="unit-tag">bp</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">CA-US 10Y</th>
+                  <td class="num">
+                    {fmtBp(props.snapshot?.observations.spreads?.[0]?.spread_bp ?? null)}
+                    <span class="unit-tag">bp</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Carry roll</th>
+                  <td class="num">
+                    {fmtBp(props.snapshot?.observations.carry?.carry_roll_bp ?? null)}
+                    <span class="unit-tag">bp</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="figure-caption">
+              Method par_approx_semiannual_log_discount_v1. Long end is a 30Y proxy.
+              The 2s10s slope is the stored backtest slope, never recomputed here.
+              NA until the pipeline publishes a slope series.
+            </p>
+          </SectionState>
+        </div>
+      </div>
+      <Show when={!props.loading && !props.error && knots().length > 0}>
+        <div class="chart-card" style={{ margin: "16px 0" }}>
+          <h2>Curve shape, yield in percent</h2>
+          <Chart
+            title="Par approx curve"
+            xLabel="Tenor (years)"
+            yLabel="Yield (percent_yield)"
+            series={[
+              {
+                label: "Yield",
+                color: "#2e7f79",
+                points: knots().map((k) => ({ x: k.tenor_years, y: k.yield_percent })),
+              },
+            ]}
+          />
+        </div>
+      </Show>
+    </section>
+  );
+}

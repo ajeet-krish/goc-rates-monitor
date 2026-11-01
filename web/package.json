@@ -1,0 +1,23 @@
+{
+  "name": "goc-rates-monitor-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "build:data": "node scripts/build-data.mjs",
+    "test": "node --test --import ./tests/register.mjs tests/"
+  },
+  "dependencies": {
+    "@solidjs/router": "^0.15.3",
+    "solid-js": "^1.9.9",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^5.4.20",
+    "vite-plugin-solid": "^2.11.2"
+  }
+}
