@@ -7,6 +7,7 @@ import time
 from collections.abc import Sequence
 from email.utils import parsedate_to_datetime
 from types import TracebackType
+from urllib.parse import urlparse
 
 import httpx
 
@@ -15,6 +16,14 @@ TIMEOUT_SECONDS = 15.0
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = (0.5, 1.0, 2.0)
 RETRY_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+ALLOWED_HOSTS = frozenset(
+    {
+        "www.bankofcanada.ca",
+        "www150.statcan.gc.ca",
+        "api.stlouisfed.org",
+    }
+)
 
 MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 MAX_OBSERVATIONS = 10000
@@ -83,6 +92,17 @@ def ensure_bounded_list(items: Sequence[object], what: str, limit: int = MAX_OBS
         raise ValueError(f"{what} has {len(items)} entries, over the cap of {limit}")
 
 
+def _check_url_allowed(url: str) -> str:
+    """Reject URLs outside the HTTPS allowlist of the three upstream hosts."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(f"upstream URL must use https: {url!r}")
+    host = (parsed.hostname or "").lower()
+    if host not in ALLOWED_HOSTS:
+        raise ValueError(f"upstream host is not allowlisted: {host!r}")
+    return url
+
+
 class BaseClient:
     """Thin wrapper over httpx with retry and a fixed User-Agent."""
 
@@ -96,6 +116,7 @@ class BaseClient:
 
     def get(self, url: str, params: dict[str, str] | None = None) -> httpx.Response:
         """GET a URL with retries on 429 and 5xx responses."""
+        _check_url_allowed(url)
         last_error: Exception | None = None
         for attempt in range(MAX_ATTEMPTS):
             try:
@@ -118,6 +139,7 @@ class BaseClient:
 
     def post_json(self, url: str, payload: object) -> httpx.Response:
         """POST a JSON payload with the same retry policy."""
+        _check_url_allowed(url)
         last_error: Exception | None = None
         for attempt in range(MAX_ATTEMPTS):
             try:

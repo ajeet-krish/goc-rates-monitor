@@ -59,6 +59,17 @@ def test_build_snapshot_fails_closed_on_empty_sections() -> None:
         build_snapshot("2026-10-30", {"a": 1}, {})
 
 
+def test_write_snapshot_rejects_symlink_directory(tmp_path: Path) -> None:
+    """A symlinked snapshot directory is rejected instead of followed."""
+    snapshot = _sample_snapshot()
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    link = tmp_path / "2026-10-30"
+    link.symlink_to(real_dir, target_is_directory=True)
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        write_snapshot(link, snapshot)
+
+
 def test_prune_raw_cache_keeps_most_recent_only(tmp_path: Path) -> None:
     """Raw retention prunes old cache files and leaves snapshots alone."""
     raw_dir = tmp_path / "raw"

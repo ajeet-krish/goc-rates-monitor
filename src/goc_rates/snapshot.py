@@ -105,8 +105,28 @@ def build_snapshot(
 
 def write_snapshot(snapshot_dir: str | Path, snapshot: dict[str, Any]) -> dict[str, str]:
     """Write snapshot.json plus manifest.json and return their sha256 digests."""
+    from goc_rates.dates import parse_strict_iso_date
+
     directory = Path(snapshot_dir)
+    if directory.is_symlink():
+        raise ValueError(f"snapshot directory must not be a symlink: {directory}")
+    metadata = snapshot.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("snapshot metadata must be a mapping")
+    date_text = metadata.get("snapshot_date")
+    if not isinstance(date_text, str):
+        raise ValueError("metadata.snapshot_date must be a string")
+    normalized = parse_strict_iso_date(date_text).isoformat()
+    if directory.name != normalized:
+        raise ValueError(
+            f"snapshot directory {directory.name!r} must match snapshot_date {normalized!r}"
+        )
     directory.mkdir(parents=True, exist_ok=True)
+    if directory.resolve().name != normalized:
+        raise ValueError(
+            f"resolved snapshot directory {directory.resolve().name!r} "
+            f"must match snapshot_date {normalized!r}"
+        )
     snapshot_text = canonical_dumps(snapshot)
     snapshot_digest = sha256_text(snapshot_text)
     atomic_write_text(directory / "snapshot.json", snapshot_text)

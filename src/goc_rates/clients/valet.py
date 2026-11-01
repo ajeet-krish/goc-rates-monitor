@@ -15,6 +15,7 @@ from goc_rates.models import Quantity, make_missing, make_quantity
 
 VALET_BASE_URL = "https://www.bankofcanada.ca/valet"
 VALET_GROUP = "bond_yields_benchmark"
+VALET_GROUP_URL = f"{VALET_BASE_URL}/observations/group/{VALET_GROUP}/json"
 
 VALET_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
@@ -57,11 +58,33 @@ def fetch_valet_series(
     series_id: str,
     client: BaseClient,
     label: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    recent_limit: int | None = None,
 ) -> list[ValetObservation]:
-    """Fetch one Valet series and assert its label when an expected label is given."""
+    """Fetch one Valet series and assert its label when an expected label is given.
+
+    Optional start_date and end_date bound the upstream window as strict
+    ISO YYYY-MM-DD query params. Optional recent_limit keeps only the most
+    recent N observations in memory and is capped by MAX_HISTORY_OBS so a
+    long history cannot exhaust memory while still covering 254 prints.
+    """
+    from goc_rates.limits import MAX_HISTORY_OBS
+
     cleaned = _check_valet_id(series_id, "series_id")
+    params: dict[str, str] = {}
+    if start_date is not None:
+        params["start_date"] = _parse_observation_date(start_date)
+    if end_date is not None:
+        params["end_date"] = _parse_observation_date(end_date)
+    if recent_limit is not None:
+        if not isinstance(recent_limit, int) or isinstance(recent_limit, bool):
+            raise ValueError("recent_limit must be an int")
+        if recent_limit < 1 or recent_limit > MAX_HISTORY_OBS:
+            raise ValueError(f"recent_limit must be within 1 and {MAX_HISTORY_OBS}")
+        params["order_dir"] = "desc"
     url = f"{VALET_BASE_URL}/observations/{cleaned}/json"
-    response = client.get(url)
+    response = client.get(url, params=params if params else None)
     payload = parse_json_capped(response)
     if not isinstance(payload, dict):
         raise ValueError("Valet response root must be an object")
@@ -83,6 +106,9 @@ def fetch_valet_series(
     if not isinstance(observations, list):
         raise ValueError("Valet observations must be a list")
     ensure_bounded_list(observations, "Valet observations")
+    if recent_limit is not None:
+        tail = observations[-recent_limit:]
+        observations = tail
     results: list[ValetObservation] = []
     for item in observations:
         if not isinstance(item, dict):
@@ -122,11 +148,32 @@ def fetch_valet_group(
     group_name: str,
     client: BaseClient,
     expected_labels: dict[str, str] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    recent_limit: int | None = None,
 ) -> dict[str, list[ValetObservation]]:
-    """Fetch a Valet group from its single group payload and assert each label once."""
+    """Fetch a Valet group from its single group payload and assert each label once.
+
+    Optional start_date and end_date bound the upstream window as strict
+    ISO query params. Optional recent_limit keeps only the most recent N
+    prints per series and is capped by MAX_HISTORY_OBS so the 254 print
+    backtest stays bounded at 2000.
+    """
+    from goc_rates.limits import MAX_HISTORY_OBS
+
     cleaned_group = _check_valet_id(group_name, "group_name")
-    url = f"{VALET_BASE_URL}/observations/groups/{cleaned_group}/json"
-    response = client.get(url)
+    params: dict[str, str] = {}
+    if start_date is not None:
+        params["start_date"] = _parse_observation_date(start_date)
+    if end_date is not None:
+        params["end_date"] = _parse_observation_date(end_date)
+    if recent_limit is not None:
+        if not isinstance(recent_limit, int) or isinstance(recent_limit, bool):
+            raise ValueError("recent_limit must be an int")
+        if recent_limit < 1 or recent_limit > MAX_HISTORY_OBS:
+            raise ValueError(f"recent_limit must be within 1 and {MAX_HISTORY_OBS}")
+    url = f"{VALET_BASE_URL}/observations/group/{cleaned_group}/json"
+    response = client.get(url, params=params if params else None)
     payload = parse_json_capped(response)
     if not isinstance(payload, dict):
         raise ValueError("Valet group response root must be an object")
@@ -169,6 +216,8 @@ def fetch_valet_group(
     if not isinstance(observations, list):
         raise ValueError("Valet group observations must be a list")
     ensure_bounded_list(observations, "Valet group observations")
+    if recent_limit is not None:
+        observations = observations[-recent_limit:]
     results: dict[str, list[ValetObservation]] = {series_id: [] for series_id in target_ids}
     for item in observations:
         if not isinstance(item, dict):

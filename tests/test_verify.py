@@ -179,13 +179,15 @@ def test_verify_file_writes_verify_json_with_exit_code(tmp_path: Path) -> None:
     snapshot = _passing_snapshot()
     snapshot.pop("manifest", None)
     snapshot_text = canonical_dumps(snapshot)
-    snapshot_path = tmp_path / "snapshot.json"
+    directory = tmp_path / "2026-10-30"
+    directory.mkdir(parents=True, exist_ok=True)
+    snapshot_path = directory / "snapshot.json"
     snapshot_path.write_text(snapshot_text, encoding="utf-8")
     raw_digest = hashlib.sha256(snapshot_text.encode("utf-8")).hexdigest()
     manifest = {"files": {"snapshot.json": {"sha256": raw_digest}}}
-    (tmp_path / "manifest.json").write_text(canonical_dumps(manifest), encoding="utf-8")
+    (directory / "manifest.json").write_text(canonical_dumps(manifest), encoding="utf-8")
     code = verify_file(snapshot_path)
     assert code == 0
-    report = json.loads((tmp_path / "verify.json").read_text(encoding="utf-8"))
+    report = json.loads((directory / "verify.json").read_text(encoding="utf-8"))
     assert report["passed"] is True
     assert "snapshot_sha256" in report

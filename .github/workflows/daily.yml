@@ -1,0 +1,155 @@
+name: daily
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      snapshot_date:
+        description: "Snapshot date YYYY-MM-DD, defaults to the previous joint business day."
+        required: false
+        default: ""
+      force_rebuild:
+        description: "Rebuild even when the snapshot triple already exists."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      date: ${{ steps.resolve.outputs.date }}
+      sha: ${{ steps.done.outputs.sha }}
+      commit_sha: ${{ steps.done.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: uv sync --frozen
+      - id: resolve
+        run: |
+          set -euo pipefail
+          if [ -n "$DATE_INPUT" ]; then
+            DATE_INPUT="$DATE_INPUT" uv run python -c "import os; from goc_rates.dates import parse_strict_iso_date; parse_strict_iso_date(os.environ['DATE_INPUT'])"
+            DATE="$DATE_INPUT"
+          else
+            DATE="$(uv run python -c "import datetime; from zoneinfo import ZoneInfo; from goc_rates.calendar import previous_business_day; print(previous_business_day(datetime.datetime.now(ZoneInfo('America/Toronto')).date()).isoformat())")"
+            DATE_INPUT="$DATE" uv run python -c "import os; from goc_rates.dates import parse_strict_iso_date; parse_strict_iso_date(os.environ['DATE_INPUT'])"
+          fi
+          echo "resolved snapshot date: $DATE"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+        env:
+          TZ: America/Toronto
+          DATE_INPUT: ${{ inputs.snapshot_date }}
+      - id: fetch
+        run: |
+          set -euo pipefail
+          DATE="$SNAPSHOT_DATE"
+          FORCE="$FORCE_REBUILD"
+          if [ "$FORCE" != "true" ] && [ -f "snapshots/$DATE/snapshot.json" ] && [ -f "snapshots/$DATE/manifest.json" ] && [ -f "snapshots/$DATE/verify.json" ]; then
+            echo "reusing existing triple for $DATE (force_rebuild not set)"
+          else
+            uv run python -m goc_rates snapshot --date "$DATE" --out "snapshots/$DATE" --config config/benchmark_map.yaml | tee snapshot_out.txt
+            grep -q "SNAPSHOT_DATE=$DATE" snapshot_out.txt
+          fi
+          test -f "snapshots/$DATE/snapshot.json"
+          test -f "snapshots/$DATE/manifest.json"
+          uv run python -m goc_rates verify --snapshot "snapshots/$DATE/snapshot.json" --config config/benchmark_map.yaml
+          test -f "snapshots/$DATE/verify.json"
+          SNAPSHOT_DATE="$SNAPSHOT_DATE" uv run python -c "import json, os; from pathlib import Path; target = Path('snapshots') / os.environ['SNAPSHOT_DATE'] / 'verify.json'; report = json.loads(target.read_text()); assert report['passed'] is True and report['passed_count'] == 18 and report['failed_count'] == 0, report"
+          SNAPSHOT_DATE="$SNAPSHOT_DATE" uv run python -c "import hashlib, json, os; from pathlib import Path; target = Path('snapshots') / os.environ['SNAPSHOT_DATE']; raw = (target / 'snapshot.json').read_bytes(); manifest = json.loads((target / 'manifest.json').read_text()); digest = manifest.get('files', {}).get('snapshot.json', {}).get('sha256', manifest.get('snapshot.json', {}).get('sha256', '')); assert digest == hashlib.sha256(raw).hexdigest(), 'manifest sha mismatch'"
+          SNAPSHOT_DATE="$SNAPSHOT_DATE" uv run python -c "import json, os; from pathlib import Path; snap = json.loads((Path('snapshots') / os.environ['SNAPSHOT_DATE'] / 'snapshot.json').read_text()); assert snap['metadata']['snapshot_date'] == os.environ['SNAPSHOT_DATE'], 'snapshot_date must equal dirname'"
+          test -f "snapshots/$DATE/snapshot.json"
+          test -f "snapshots/$DATE/verify.json"
+          grep_status=0
+          grep -ri "mock" "snapshots/$DATE/snapshot.json" "snapshots/$DATE/verify.json" || grep_status=$?
+          if [ "$grep_status" -eq 0 ]; then echo "mock marker found, refusing to publish"; exit 1; fi
+          if [ "$grep_status" -ne 1 ]; then echo "mock scan failed with status $grep_status"; exit 1; fi
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          TZ: America/Toronto
+          SNAPSHOT_DATE: ${{ steps.resolve.outputs.date }}
+          FORCE_REBUILD: ${{ inputs.force_rebuild }}
+      - id: done
+        run: |
+          set -euo pipefail
+          DATE="$RESOLVED_DATE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "snapshots/$DATE/snapshot.json" "snapshots/$DATE/manifest.json" "snapshots/$DATE/verify.json"
+          if git diff --cached --quiet; then
+            echo "no changes to commit for $DATE"
+          else
+            git commit -m "snapshot $DATE [skip ci]"
+            git push
+          fi
+          SHA="$(sha256sum "snapshots/$DATE/snapshot.json" | cut -d' ' -f1)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          RESOLVED_DATE: ${{ steps.resolve.outputs.date }}
+
+  build:
+    runs-on: ubuntu-latest
+    needs: snapshot
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.snapshot.outputs.commit_sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build:data
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: |
+          set -euo pipefail
+          LATEST="$(node -e "const fs = require('fs'); const doc = JSON.parse(fs.readFileSync('./dist/data/index.json', 'utf8')); console.log(doc.latest)")"
+          test "$LATEST" = "$EXPECTED_DATE"
+          test -f dist/.nojekyll
+          test -f dist/index.html
+          test -f dist/404.html
+          test -f dist/data/index.json
+          test -f "dist/data/$EXPECTED_DATE/snapshot.json"
+          test -f "dist/data/$EXPECTED_DATE/verify.json"
+          grep_status=0
+          grep -ri "mock" "dist/data/$EXPECTED_DATE/snapshot.json" "dist/data/$EXPECTED_DATE/verify.json" dist/index.html || grep_status=$?
+          if [ "$grep_status" -eq 0 ]; then echo "mock marker found in dist, refusing to publish"; exit 1; fi
+          if [ "$grep_status" -ne 1 ]; then echo "mock scan failed with status $grep_status"; exit 1; fi
+          echo "build gates passed for $EXPECTED_DATE"
+        env:
+          EXPECTED_DATE: ${{ needs.snapshot.outputs.date }}
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: web/dist
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

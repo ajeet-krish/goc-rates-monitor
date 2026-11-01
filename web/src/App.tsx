@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createResource, lazy, Show, Suspense } from "solid-js";
 import { A, Route, Router, useLocation, useNavigate } from "@solidjs/router";
 import FooterStamp from "./components/FooterStamp";
+import StalenessBanner from "./components/StalenessBanner";
 import { DeskProvider, useDesk } from "./lib/desk";
 import { fetchIndex, fetchSnapshot, fetchVerify, useMock } from "./lib/snapshot";
 import { latestN, readAsofState, resolveAsof } from "./lib/asof";
@@ -250,6 +251,11 @@ function Layout(props: ParentProps) {
           {badge().text}
         </span>
       </header>
+      <StalenessBanner
+        latest={index()?.latest}
+        hasDates={(index()?.dates.length ?? 0) > 0}
+        verifyPassed={verify()?.passed ?? null}
+      />
       <nav class="nav-row" aria-label="Sections">
         <A class="nav-link" href="/" end>
           Desk

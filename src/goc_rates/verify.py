@@ -385,7 +385,7 @@ def run_checks(
     else:
         results.append(CheckResult("V12", False, "staleness section is missing"))
 
-    results.extend(_run_phase2_checks(snapshot, tolerance_bp))
+    results.extend(_run_phase2_checks(snapshot, tolerance_bp, fred_api_key))
 
     return results
 
@@ -460,7 +460,29 @@ def _backtest_section(snapshot: dict[str, Any]) -> Any:
     return _get_path(snapshot, "observations", "backtest")
 
 
-def _run_phase2_checks(snapshot: dict[str, Any], tolerance_bp: float) -> list[CheckResult]:
+def _is_degraded_missing(section: Any, fred_api_key: str | None) -> bool:
+    """Return True when a section is an explicit FRED degraded missing marker.
+
+    Degraded passes are narrow: the FRED key must be absent, the section
+    must be a mapping with status missing, and the reason must be non empty.
+    A configured key never takes the degraded path so missing data with a
+    live US leg still fails closed.
+    """
+    if fred_api_key is not None and str(fred_api_key).strip():
+        return False
+    if not isinstance(section, dict):
+        return False
+    if section.get("status") != "missing":
+        return False
+    reason = section.get("reason")
+    return isinstance(reason, str) and bool(reason.strip())
+
+
+def _run_phase2_checks(
+    snapshot: dict[str, Any],
+    tolerance_bp: float,
+    fred_api_key: str | None = None,
+) -> list[CheckResult]:
     """Run checks V13 to V18 for the Phase 2 curve engine."""
     from goc_rates.analytics import canada_us_spread_bp, carry_roll_bp
     from goc_rates.backtest import BACKTEST_RULE, run_backtest
@@ -616,7 +638,24 @@ def _run_phase2_checks(snapshot: dict[str, Any], tolerance_bp: float) -> list[Ch
 
     records = _spread_records(snapshot)
     if records is None:
-        results.append(CheckResult("V16", False, "spread records section is missing"))
+        raw_spreads: Any = None
+        observations_raw = snapshot.get("observations")
+        if isinstance(observations_raw, dict):
+            raw_spreads = observations_raw.get("spreads")
+            if raw_spreads is None:
+                derived_raw = observations_raw.get("derived")
+                if isinstance(derived_raw, dict):
+                    raw_spreads = derived_raw.get("spreads")
+        if _is_degraded_missing(raw_spreads, fred_api_key):
+            results.append(
+                CheckResult(
+                    "V16",
+                    True,
+                    "spreads missing, FRED degraded without key (unit: bp)",
+                )
+            )
+        else:
+            results.append(CheckResult("V16", False, "spread records section is missing"))
     else:
         try:
             if len(records) > MAX_SPREAD_RECORDS:
@@ -702,6 +741,14 @@ def _run_phase2_checks(snapshot: dict[str, Any], tolerance_bp: float) -> list[Ch
     backtest = _backtest_section(snapshot)
     if not isinstance(backtest, dict):
         results.append(CheckResult("V18", False, "backtest section is missing"))
+    elif _is_degraded_missing(backtest, fred_api_key):
+        results.append(
+            CheckResult(
+                "V18",
+                True,
+                "backtest missing, FRED degraded without key (unit: bp)",
+            )
+        )
     else:
         try:
             rule_raw = backtest.get("rule", "")
@@ -816,6 +863,18 @@ def verify_file(
         raise ValueError(f"snapshot file is not valid JSON: {exc}") from None
     if not isinstance(snapshot, dict):
         raise ValueError("snapshot root must be an object")
+    metadata = snapshot.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("metadata section is missing")
+    date_text = metadata.get("snapshot_date")
+    if not isinstance(date_text, str):
+        raise ValueError("metadata.snapshot_date must be a string")
+    normalized_date = parse_strict_iso_date(date_text).isoformat()
+    if snapshot_file.parent.name != normalized_date:
+        raise ValueError(
+            f"snapshot directory {snapshot_file.parent.name!r} "
+            f"must match snapshot_date {normalized_date!r}"
+        )
     effective_key = fred_api_key if fred_api_key is not None else read_api_key()
     expected_labels: dict[str, str] | None = None
     if benchmark_map_path is not None:

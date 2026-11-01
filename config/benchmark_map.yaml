@@ -2,25 +2,25 @@ schema_version: 1
 benchmarks:
   2Y:
     valet_series_id: BD.CDN.2YR.DQ.YLD
-    valet_label: 2-year benchmark bond yield
+    valet_label: Benchmark bond yield, 2-year
     fred_series_id: DGS2
     comparator_label: 2-year US Treasury par yield
     legacy_v_code: null
   5Y:
     valet_series_id: BD.CDN.5YR.DQ.YLD
-    valet_label: 5-year benchmark bond yield
+    valet_label: Benchmark bond yield, 5-year
     fred_series_id: DGS5
     comparator_label: 5-year US Treasury par yield
     legacy_v_code: null
   10Y:
     valet_series_id: BD.CDN.10YR.DQ.YLD
-    valet_label: 10-year benchmark bond yield
+    valet_label: Benchmark bond yield, 10-year
     fred_series_id: DGS10
     comparator_label: 10-year US Treasury par yield
     legacy_v_code: null
   30Y:
     valet_series_id: BD.CDN.LONG.DQ.YLD
-    valet_label: Long-term benchmark bond yield
+    valet_label: Benchmark bond yield, long-term
     fred_series_id: DGS30
     comparator_label: 30-year US Treasury par yield
     legacy_v_code: null

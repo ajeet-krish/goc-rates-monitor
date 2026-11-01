@@ -57,10 +57,19 @@ def fetch_fred_series(
     client: BaseClient,
     api_key: str | None,
     observation_start: str | None = None,
+    observation_end: str | None = None,
     realtime_start: str | None = None,
     realtime_end: str | None = None,
+    limit: int | None = None,
+    sort_order: str | None = None,
 ) -> list[FredObservation]:
-    """Fetch a FRED series. A missing key returns one missing observation, no crash."""
+    """Fetch a FRED series. A missing key returns one missing observation, no crash.
+
+    Optional observation_start and observation_end bound the upstream
+    window as strict ISO dates. Optional limit caps the returned rows and
+    is bounded by MAX_HISTORY_OBS so the 254 print backtest stays within
+    the 2000 row cap. Optional sort_order is asc or desc.
+    """
     cleaned = series_id.strip()
     if not FRED_ID_PATTERN.match(cleaned):
         raise ValueError(f"series_id must match {FRED_ID_PATTERN.pattern}: {series_id!r}")
@@ -79,18 +88,33 @@ def fetch_fred_series(
     }
     if observation_start is not None:
         params["observation_start"] = _parse_iso_param(observation_start, "observation_start")
+    if observation_end is not None:
+        params["observation_end"] = _parse_iso_param(observation_end, "observation_end")
     if realtime_start is not None:
         params["realtime_start"] = _parse_iso_param(realtime_start, "realtime_start")
     if realtime_end is not None:
         params["realtime_end"] = _parse_iso_param(realtime_end, "realtime_end")
+    if limit is not None:
+        from goc_rates.limits import MAX_HISTORY_OBS
+
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            raise ValueError("FRED limit must be an int")
+        if limit < 1 or limit > MAX_HISTORY_OBS:
+            raise ValueError(f"FRED limit must be within 1 and {MAX_HISTORY_OBS}")
+        params["limit"] = str(limit)
+    if sort_order is not None:
+        cleaned_sort = sort_order.strip().lower()
+        if cleaned_sort not in ("asc", "desc"):
+            raise ValueError("FRED sort_order must be asc or desc")
+        params["sort_order"] = cleaned_sort
     try:
         response = client.get(f"{FRED_BASE_URL}/series/observations", params=params)
     except httpx.HTTPError as exc:
-        raise httpx.HTTPError(redact_api_key_text(str(exc))) from exc
+        raise httpx.HTTPError(redact_api_key_text(str(exc))) from None
     try:
         payload = parse_json_capped(response)
     except ValueError as exc:
-        raise ValueError(redact_api_key_text(str(exc))) from exc
+        raise ValueError(redact_api_key_text(str(exc))) from None
     if not isinstance(payload, dict):
         raise ValueError("FRED response root must be an object")
     if "observations" not in payload:

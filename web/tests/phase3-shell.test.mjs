@@ -32,7 +32,7 @@ describe("router and reload fallback wiring", () => {
   });
 
   it("ships a 404 fallback that preserves the asof query on hard reload", async () => {
-    const fallback = await readSource("404.html");
+    const fallback = await readSource("public/404.html");
     assert.match(fallback, /asof/);
     const index = await readSource("index.html");
     assert.match(index, /id="root"/);

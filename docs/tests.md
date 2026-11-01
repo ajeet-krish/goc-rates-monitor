@@ -1,6 +1,34 @@
 # GoC Test Results
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02
+
+## 2026-11-02 - Deploy: Test Report
+
+Deploy verification across pipeline, web, live snapshot stubs, and daily workflow gates. No new test files; probes ran ad hoc plus existing suites.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (93 passed) | PASS | Full pipeline suite, 1.18s, includes live full pass and degraded FRED pass |
+| npm test web (53 passed) | PASS | node:test suites, 9 suites, 0 fail |
+| npm run build:data | PASS | Exit 0, published 0 dates (no snapshots dir), index.json latest null |
+| npm run build | PASS | vite build clean, 48 modules, dist written |
+| npm run typecheck | PASS | tsc noEmit clean |
+| SNAPSHOT_DATE only after verify 0, no skeleton marker | PASS | Print gated by code == 0; skeleton path returns 1 with skeleton message only |
+| dirname mismatch reject | PASS | Wrong out dirname returns 2 with must match snapshot date message |
+| StatCan skip no call | PASS | Empty statcan_indicators skips fetch, vectors empty, no statcan provenance |
+| FRED absent degraded pass | PASS | fred_available False marks spreads and backtest missing with FRED_API_KEY reasons, warning present |
+| FRED configured missing fail closed | PASS | fred_available True with empty histories marks spreads missing for no joint prints and backtest missing for 0 joint prints |
+| FRED key absent returns None | PASS | read_api_key None when env unset |
+| mock marker reject | PASS | Live snapshot returns 1 on mock marker; daily greps snapshots and dist for mock and refuses to publish |
+| strict ISO reject ../ | PASS | ../, .., slash dates, padded whitespace, empty, month 13 all raise; 2026-10-30 resolves |
+| daily.yml YAML parse | PASS | yaml.safe_load succeeds |
+| daily.yml no ${{ }} in run blocks | PASS | 0 run blocks contain expression syntax; values pass via env |
+| daily.yml permissions | PASS | Top contents read, snapshot contents write, build contents read, deploy pages write plus id-token write |
+| daily.yml dist asserts | PASS | Asserts latest equals date plus dist .nojekyll, index.html, 404.html, data index, date snapshot and verify, with mock scan |
+
+Coverage summary: 93 passed (pytest) plus 53 passed (web), 0 failed. Happy path covered (live full V01 to V18 pass, build data publish, vite build, typecheck). Edge cases covered (dirname mismatch, StatCan skip, FRED degraded versus configured empty, strict date grammar, run block env indirection). Error conditions covered (mock marker in snapshot and dist, YAML parse, permission pins, dist gate asserts, skeleton fail closed).
+
+Failure analysis: one interim probe fault where the StatCan skip probe tried to assign a frozen dataclass field; reran using the as loaded map (statcan_indicators already empty) and asserted the skip branch directly. No product code defect found.
 
 ## 2026-11-01 - Phase 3: Test Report
 

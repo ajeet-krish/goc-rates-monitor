@@ -90,7 +90,7 @@ def test_base_client_retries_then_succeeds() -> None:
 
     client = BaseClient(transport=httpx.MockTransport(handler))
     try:
-        response = client.get("https://example.invalid/health")
+        response = client.get("https://www.bankofcanada.ca/health")
     finally:
         client.close()
     assert response.status_code == 200
@@ -146,3 +146,29 @@ def test_statcan_reuses_values_as_published() -> None:
         client.close()
     assert results["41690973"][1].reference_period == "2026-10-01"
     assert results["41690973"][1].quantity["value"] == pytest.approx(165.5)
+
+
+def test_base_client_rejects_non_allowlisted_host() -> None:
+    """Hosts outside the three upstreams are rejected before any request."""
+    client = BaseClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text="{}"))
+    )
+    try:
+        with pytest.raises(ValueError, match="not allowlisted"):
+            client.get("https://example.invalid/health")
+        with pytest.raises(ValueError, match="not allowlisted"):
+            client.post_json("https://example.invalid/submit", {})
+    finally:
+        client.close()
+
+
+def test_base_client_rejects_plain_http() -> None:
+    """Plain HTTP is rejected even for an allowlisted host."""
+    client = BaseClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text="{}"))
+    )
+    try:
+        with pytest.raises(ValueError, match="must use https"):
+            client.get("http://www.bankofcanada.ca/valet")
+    finally:
+        client.close()

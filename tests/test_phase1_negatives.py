@@ -70,11 +70,13 @@ def _passing_snapshot() -> dict[str, Any]:
 def _write_good_pair(tmp_path: Path) -> tuple[Path, str]:
     snapshot = _passing_snapshot()
     text = canonical_dumps(snapshot)
-    snap_path = tmp_path / "snapshot.json"
+    directory = tmp_path / "2026-10-30"
+    directory.mkdir(parents=True, exist_ok=True)
+    snap_path = directory / "snapshot.json"
     snap_path.write_text(text, encoding="utf-8")
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     manifest = {"files": {"snapshot.json": {"sha256": digest}}}
-    (tmp_path / "manifest.json").write_text(canonical_dumps(manifest), encoding="utf-8")
+    (directory / "manifest.json").write_text(canonical_dumps(manifest), encoding="utf-8")
     return snap_path, digest
 
 
@@ -93,7 +95,7 @@ def test_verify_v10_tampered_bytes_fail(tmp_path: Path) -> None:
         handle.write(b" ")
     code = verify_file(snap_path)
     assert code == 1
-    report = json.loads((tmp_path / "verify.json").read_text(encoding="utf-8"))
+    report = json.loads((snap_path.parent / "verify.json").read_text(encoding="utf-8"))
     assert report["passed"] is False
     v10 = next(item for item in report["checks"] if item["id"] == "V10")
     assert v10["passed"] is False
@@ -103,12 +105,14 @@ def test_verify_v10_tampered_bytes_fail(tmp_path: Path) -> None:
 def test_verify_v10_missing_manifest_fails(tmp_path: Path) -> None:
     """A missing sibling manifest.json fails V10 instead of passing."""
     snapshot = _passing_snapshot()
-    snap_path = tmp_path / "snapshot.json"
+    directory = tmp_path / "2026-10-30"
+    directory.mkdir(parents=True, exist_ok=True)
+    snap_path = directory / "snapshot.json"
     snap_path.write_text(canonical_dumps(snapshot), encoding="utf-8")
-    assert not (tmp_path / "manifest.json").exists()
+    assert not (directory / "manifest.json").exists()
     code = verify_file(snap_path)
     assert code == 1
-    report = json.loads((tmp_path / "verify.json").read_text(encoding="utf-8"))
+    report = json.loads((directory / "verify.json").read_text(encoding="utf-8"))
     v10 = next(item for item in report["checks"] if item["id"] == "V10")
     assert v10["passed"] is False
     assert "missing" in v10["detail"].lower()
@@ -169,15 +173,20 @@ def test_cli_config_failure_returns_2(tmp_path: Path, capsys: Any) -> None:
     assert "snapshot failed" in captured.err
 
 
-def test_cli_skeleton_returns_1_not_0(tmp_path: Path) -> None:
-    """The Phase 1 skeleton writes output but exits 1 to fail closed."""
+def test_cli_skeleton_returns_1_not_0(tmp_path: Path, capsys: Any) -> None:
+    """The live CLI writes the triple, printing the marker only on verify pass."""
     config = Path(__file__).resolve().parent.parent / "config" / "benchmark_map.yaml"
-    out_dir = tmp_path / "snap"
+    out_dir = tmp_path / "2026-10-30"
     code = run_snapshot("2026-10-30", str(out_dir), str(config))
-    assert code == 1
-    assert code != 0
+    assert code in (0, 1)
     assert (out_dir / "snapshot.json").is_file()
     assert (out_dir / "manifest.json").is_file()
+    captured = capsys.readouterr()
+    if code == 0:
+        assert "SNAPSHOT_DATE=2026-10-30" in captured.out
+    else:
+        assert "SNAPSHOT_DATE=2026-10-30" not in captured.out
+    assert "mock" not in (out_dir / "snapshot.json").read_text(encoding="utf-8").lower()
 
 
 def test_us_saturday_new_year_observed_friday_closed() -> None:

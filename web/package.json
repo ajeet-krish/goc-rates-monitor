@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build:data": "node scripts/build-data.mjs",
+    "prebuild": "npm run build:data",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "build:data": "node scripts/build-data.mjs",
     "test": "node --test --import ./tests/register.mjs tests/"
   },
   "dependencies": {

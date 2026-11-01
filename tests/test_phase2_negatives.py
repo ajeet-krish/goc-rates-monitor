@@ -485,9 +485,7 @@ def test_cli_wired_real_quantities() -> None:
         "10Y": make_quantity(3.4, "percent", "observed", "valet:BD.CDN.10YR.DQ.YLD"),
         "30Y": make_quantity(4.0, "percent", "observed", "valet:BD.CDN.LONG.DQ.YLD"),
     }
-    picked = _observed_benchmark_yields(
-        {key: {"valet": value} for key, value in observed.items()}
-    )
+    picked = _observed_benchmark_yields({key: {"valet": value} for key, value in observed.items()})
     assert set(picked.keys()) == {"2Y", "5Y", "10Y", "30Y"}
     section = build_curve_section(picked)  # type: ignore[arg-type]
     assert section["method"] == CURVE_METHOD
@@ -495,11 +493,17 @@ def test_cli_wired_real_quantities() -> None:
     assert len(section["knots"]) == 4
 
 
-def test_cli_skeleton_still_returns_1(tmp_path: Path) -> None:
-    """The skeleton without live fetches still writes output and exits 1."""
+def test_cli_skeleton_still_returns_1(tmp_path: Path, capsys: Any) -> None:
+    """The live CLI writes the triple, printing the marker only on verify pass."""
     config = Path(__file__).resolve().parent.parent / "config" / "benchmark_map.yaml"
-    out_dir = tmp_path / "snap"
+    out_dir = tmp_path / "2026-10-30"
     code = run_snapshot("2026-10-30", str(out_dir), str(config))
-    assert code == 1
+    assert code in (0, 1)
     assert (out_dir / "snapshot.json").is_file()
     assert (out_dir / "manifest.json").is_file()
+    captured = capsys.readouterr()
+    if code == 0:
+        assert "SNAPSHOT_DATE=2026-10-30" in captured.out
+    else:
+        assert "SNAPSHOT_DATE=2026-10-30" not in captured.out
+    assert "mock" not in (out_dir / "snapshot.json").read_text(encoding="utf-8").lower()
