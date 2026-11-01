@@ -1,6 +1,6 @@
 # goc-rates-monitor Architecture
 
-Last updated: 2026-11-01 (Phase 2)
+Last updated: 2026-11-02 (Phase 4)
 
 ## Purpose
 
@@ -95,3 +95,49 @@ with Valet BD.CDN ids, FRED DGS comparators, and nullable legacy V codes.
 
 One daily workflow run after North American close. Phase 2 adds curve
 charts. Later phases add alerts plus backfill.
+
+## Phase 4 CPI engine
+
+`src/goc_rates/cpi/` builds an experimental trim and median from 55
+pinned StatCan SA components. Bulk ingest (`bulk.py`) runs the WDS two
+step fetch (`getFullTableDownloadCSV` for 18100004, 18100256,
+18100007) with streamed bytes under `MAX_BULK_BYTES`, lists zip
+members without extracting, and hashes each member in memory (spike:
+eight digit product ids, weights zip 1.2 MB with two members, CPI data
+member 161 MB expanded, hence the 256 MB member cap with a cumulative
+guard).
+`config/cpi_components.yaml` pins the 55 component registry plus the
+2024 expenditure weight vintage with link month 2025-05 provisional;
+`components.py` asserts SA true on every row and `weights.py`
+renormalizes only when the registry sums to 100 within 1e-6.
+
+`trim_median.py` (`cpi_trim_median_weighted_sa_v1`) sorts monthly SA
+rates with link month weights, drops the bottom and top 20 percent of
+cumulative weight with partial splits on straddlers, and reads the
+median as the first component past 50 percent. Annual rates compound
+the trailing 12 monthly cores, never average. `decomposition.py`
+reports contributions in percentage points (`w * r / 100`).
+`validation.py` compares the replica against published vintages over a
+trailing 36 month window with a 24 month minimum; an MAE over 0.10
+flags for explanation and never blocks the build. `section.py` stores
+two chained index months, twelve history months, and bulk sha256
+hashes with short sha12 prefixes.
+
+Method, label, and status are explicit: label `experimental`,
+`is_official` false, publisher `statcan`, experimental series
+`derived:cpi_trim_median`, and `owns_seasonal_adjustment` false since
+StatCan SA values are reused as published. New units
+`percent_per_month` and `percentage_points` carry every numeric field.
+
+## Verification
+
+Twenty two checks (V01 to V22). V19 pins the inflation inputs (method,
+55 components, 2025-05 link, 100 within 1e-6, bulk sha pairs, SA reuse
+owned elsewhere, YYYY-MM reference, count caps). V20 recomputes trim,
+median, and YoY within 1.0 bp equivalent (0.01 in percent units). V21
+reconciles contributions within 0.01 pp and the 0.40 excluded weight
+within 1e-6. V22 asserts the experimental label, recomputes MAE, bias,
+and max from stored residuals, and requires the gate flag to match the
+recomputed outcome while passing either way. CPI caps live in
+`limits.py` (`MAX_CPI_COMPONENTS` 128, `MAX_CPI_MONTHS` 240, bulk byte
+and member caps).

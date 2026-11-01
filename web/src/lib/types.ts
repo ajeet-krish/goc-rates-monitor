@@ -10,7 +10,9 @@ export type Unit =
   | "bp_per_annum"
   | "duration_years"
   | "dv01_per_million"
-  | "unitless_ratio";
+  | "unitless_ratio"
+  | "percent_per_month"
+  | "percentage_points";
 
 export type Quality = "observed" | "missing" | "stale" | "revised";
 
@@ -74,6 +76,66 @@ export interface BacktestSection {
   total_pnl_bp: number;
 }
 
+export interface InflationContribution {
+  component_id: string;
+  monthly_rate_percent: number;
+  weight_percent: number;
+  contribution_pp: number;
+}
+
+export interface InflationHistoryRow {
+  month: string;
+  trim_mom_percent: number;
+  median_mom_percent: number;
+  median_component: string;
+  trim_yoy_percent: number | null;
+  median_yoy_percent: number | null;
+}
+
+export interface TrimMedianValidation {
+  months: number;
+  gate_pp: number;
+  trim: { mae_pp: number; bias_pp: number; max_abs_resid_pp: number };
+  median: { mae_pp: number; bias_pp: number; max_abs_resid_pp: number };
+  exceeds_gate: boolean;
+  flag: string;
+  note: string;
+  published_months: string[];
+  residuals_trim_pp: number[];
+  residuals_median_pp: number[];
+}
+
+export interface InflationSection {
+  label: string;
+  is_official: boolean;
+  publisher_series: string;
+  experimental_series: string;
+  method: string;
+  owns_seasonal_adjustment: boolean;
+  seasonally_adjusted_source: string;
+  component_count: number;
+  weight_vintage: { expenditure_year: number; link_month: string; provisional: boolean };
+  reference_month: string;
+  indexes: { months: string[]; trim: Quantity[]; median: Quantity[] };
+  latest: {
+    month: string;
+    trim_mom: Quantity;
+    median_mom: Quantity;
+    trim_yoy: Quantity;
+    median_yoy: Quantity;
+    median_component: string;
+  };
+  history: InflationHistoryRow[];
+  history_months: number;
+  contributions: InflationContribution[];
+  total_contribution_pp: number;
+  headline_mom: Quantity;
+  kept_weight_fraction: number;
+  excluded_weight_fraction: number;
+  validation: TrimMedianValidation;
+  bulk: Record<string, { product_id: number; zip_sha256: string; zip_sha12: string }>;
+}
+
 export interface SnapshotDoc {
   metadata: {
     snapshot_date: string;
@@ -93,6 +155,7 @@ export interface SnapshotDoc {
     carry?: CarrySection;
     risk?: RiskSection;
     backtest?: BacktestSection;
+    inflation?: InflationSection;
     [key: string]: unknown;
   };
   provenance: Record<string, { source_url: string; retrieved_utc: string; vintage: string }>;

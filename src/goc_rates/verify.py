@@ -1,4 +1,4 @@
-"""Verification checks V01 to V18 with a 1.0 basis point tolerance."""
+"""Verification checks V01 to V22 with a 1.0 basis point tolerance."""
 
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def run_checks(
     expected_labels: dict[str, str] | None = None,
     fred_api_key: str | None = None,
 ) -> list[CheckResult]:
-    """Run checks V01 to V18 against a snapshot document."""
+    """Run checks V01 to V22 against a snapshot document."""
     results: list[CheckResult] = []
     metadata = snapshot.get("metadata")
     observations = snapshot.get("observations")
@@ -386,6 +386,7 @@ def run_checks(
         results.append(CheckResult("V12", False, "staleness section is missing"))
 
     results.extend(_run_phase2_checks(snapshot, tolerance_bp, fred_api_key))
+    results.extend(_run_phase4_checks(snapshot))
 
     return results
 
@@ -799,6 +800,416 @@ def _run_phase2_checks(
         except (ValueError, TypeError, ArithmeticError) as exc:
             results.append(CheckResult("V18", False, f"backtest check failed: {exc}"))
     return results
+
+
+def _run_phase4_checks(snapshot: dict[str, Any]) -> list[CheckResult]:
+    """Run checks V19 to V22 for the Phase 4 experimental CPI engine."""
+    from goc_rates.cpi.components import EXPECTED_COMPONENT_COUNT
+    from goc_rates.cpi.trim_median import TRIM_METHOD, ComponentRate, compute_trim_median
+    from goc_rates.cpi.validation import (
+        MAE_GATE_PP,
+        MIN_VALIDATION_MONTHS,
+        validation_flag,
+    )
+    from goc_rates.limits import MAX_CPI_COMPONENTS, MAX_CPI_MONTHS
+
+    results: list[CheckResult] = []
+
+    inflation = _get_path(snapshot, "observations", "inflation")
+    if not isinstance(inflation, dict):
+        results.append(CheckResult("V19", False, "inflation section is missing"))
+        results.append(CheckResult("V20", False, "inflation section is missing"))
+        results.append(CheckResult("V21", False, "inflation section is missing"))
+        results.append(CheckResult("V22", False, "inflation section is missing"))
+        return results
+
+    try:
+        if inflation.get("method") != TRIM_METHOD:
+            raise ValueError(f"inflation method must be {TRIM_METHOD}")
+        if inflation.get("owns_seasonal_adjustment") is not False:
+            raise ValueError("inflation owns_seasonal_adjustment must be false")
+        if inflation.get("seasonally_adjusted_source") != "statcan":
+            raise ValueError("inflation SA source must be statcan")
+        vintage = inflation.get("weight_vintage")
+        if not isinstance(vintage, dict):
+            raise ValueError("weight_vintage section is missing")
+        if vintage.get("expenditure_year") != 2024:
+            raise ValueError("weight vintage expenditure year must pin 2024")
+        if vintage.get("link_month") != "2025-05":
+            raise ValueError("weight vintage link month must pin 2025-05")
+        if not isinstance(vintage.get("provisional"), bool):
+            raise ValueError("weight vintage provisional must be a bool")
+        reference = inflation.get("reference_month", "")
+        if not isinstance(reference, str):
+            raise ValueError("reference_month must be a string without coercion")
+        import re as _re
+
+        if _re.match(r"^(\d{4})-(0[1-9]|1[0-2])$", reference.strip()) is None:
+            raise ValueError("reference_month must be YYYY-MM")
+        component_count = inflation.get("component_count")
+        if isinstance(component_count, bool) or not isinstance(component_count, int):
+            raise ValueError("component_count must be an int without coercion")
+        if component_count != EXPECTED_COMPONENT_COUNT:
+            raise ValueError(
+                f"component_count {component_count} must pin {EXPECTED_COMPONENT_COUNT}"
+            )
+        if component_count > MAX_CPI_COMPONENTS:
+            raise ValueError("component count exceeds the cap before recompute")
+        contributions = inflation.get("contributions")
+        if not isinstance(contributions, list) or len(contributions) != component_count:
+            raise ValueError("contributions must list one row per component")
+        weight_total = 0.0
+        for row in contributions:
+            if not isinstance(row, dict):
+                raise ValueError("contribution rows must be mappings, no filtering")
+            weight_total += _require_float(row.get("weight_percent", ""), "weight_percent")
+        if abs(weight_total - 100.0) > 1e-6:
+            raise ValueError(
+                f"registry weights sum to {weight_total:.6f}, expected 100.0 within 1e-6"
+            )
+        bulk = inflation.get("bulk")
+        if not isinstance(bulk, dict) or not bulk:
+            raise ValueError("bulk hash section is missing")
+        expected_products: dict[str, int] = {
+            "cpi_monthly": 18100004,
+            "core_statistics": 18100256,
+            "basket_weights": 18100007,
+        }
+        if set(bulk.keys()) != set(expected_products.keys()):
+            raise ValueError(f"bulk keys must pin {sorted(expected_products)}, got {sorted(bulk)}")
+        for name, entry in bulk.items():
+            if not isinstance(entry, dict):
+                raise ValueError(f"bulk entry {name!r} must be a mapping")
+            product_id = entry.get("product_id")
+            if isinstance(product_id, bool) or not isinstance(product_id, int):
+                raise ValueError(f"bulk entry {name!r} product_id must be an int")
+            import re as _re_bulk
+
+            if not _re_bulk.match(r"^[1-9][0-9]{7}$", str(product_id)):
+                raise ValueError(f"bulk entry {name!r} product_id must be an 8 digit id")
+            if product_id != expected_products[name]:
+                raise ValueError(
+                    f"bulk entry {name!r} product id {product_id} "
+                    f"must pin {expected_products[name]}"
+                )
+            digest = entry.get("zip_sha256", "")
+            if not isinstance(digest, str) or len(digest.strip()) != 64:
+                raise ValueError(f"bulk entry {name!r} sha256 must be 64 hex chars")
+            try:
+                int(digest.strip(), 16)
+            except ValueError:
+                raise ValueError(f"bulk entry {name!r} sha256 must be hex") from None
+            short = entry.get("zip_sha12", "")
+            if not isinstance(short, str) or short.strip() != digest.strip()[:12]:
+                raise ValueError(f"bulk entry {name!r} sha12 must prefix its sha256")
+        history = inflation.get("history")
+        if not isinstance(history, list) or not history:
+            raise ValueError("inflation history is missing")
+        if len(history) > MAX_CPI_MONTHS:
+            raise ValueError("history exceeds the month cap before recompute")
+        results.append(
+            CheckResult(
+                "V19",
+                True,
+                f"inflation inputs pinned: {component_count} components, "
+                f"link month 2025-05, weights sum {weight_total:.6f}, "
+                f"{len(bulk)} bulk hashes (unit: mixed)",
+            )
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        results.append(CheckResult("V19", False, f"inflation inputs failed: {exc}"))
+
+    try:
+        contributions = inflation.get("contributions", [])
+        if not isinstance(contributions, list) or not contributions:
+            raise ValueError("contributions are missing")
+        if len(contributions) > MAX_CPI_COMPONENTS:
+            raise ValueError("contribution count exceeds the cap before recompute")
+        rates: dict[str, float] = {}
+        fractions: dict[str, float] = {}
+        for row in contributions:
+            if not isinstance(row, dict):
+                raise ValueError("contribution rows must be mappings, no filtering")
+            component_id = row.get("component_id", "")
+            if not isinstance(component_id, str) or not component_id:
+                raise ValueError("contribution component_id must be a non empty string")
+            if component_id in rates:
+                raise ValueError(f"duplicate contribution component_id: {component_id!r}")
+            rates[component_id] = _require_float(
+                row.get("monthly_rate_percent", ""), "monthly_rate_percent"
+            )
+            fractions[component_id] = (
+                _require_float(row.get("weight_percent", ""), "weight_percent") / 100.0
+            )
+        recomputed = compute_trim_median(
+            [
+                ComponentRate(
+                    component_id=component_id,
+                    monthly_rate_percent=rates[component_id],
+                    weight_fraction=fractions[component_id],
+                )
+                for component_id in rates
+            ]
+        )
+        latest = inflation.get("latest")
+        if not isinstance(latest, dict):
+            raise ValueError("latest trim median block is missing")
+        stored_trim_mom = _quantity_value(latest.get("trim_mom"), "trim_mom")
+        stored_median_mom = _quantity_value(latest.get("median_mom"), "median_mom")
+        stored_trim_yoy = _quantity_value(latest.get("trim_yoy"), "trim_yoy")
+        stored_median_yoy = _quantity_value(latest.get("median_yoy"), "median_yoy")
+        median_component = latest.get("median_component", "")
+        if not isinstance(median_component, str) or not median_component:
+            raise ValueError("median_component must be a non empty string")
+        if median_component != recomputed.median_component_id:
+            raise ValueError(
+                f"median component {median_component!r} must match "
+                f"recomputed {recomputed.median_component_id!r}"
+            )
+        history = inflation.get("history", [])
+        if not isinstance(history, list) or len(history) < 12:
+            raise ValueError("inflation history needs at least 12 months")
+        if len(history) > MAX_CPI_MONTHS:
+            raise ValueError("history exceeds the month cap before recompute")
+        trailing_trim: list[float] = []
+        trailing_median: list[float] = []
+        for row in history[-12:]:
+            if not isinstance(row, dict):
+                raise ValueError("history rows must be mappings")
+            trailing_trim.append(_require_float(row.get("trim_mom_percent", ""), "trim_mom"))
+            trailing_median.append(_require_float(row.get("median_mom_percent", ""), "median_mom"))
+        from goc_rates.cpi.changes import compound_annual_percent
+
+        expected_trim_yoy = compound_annual_percent(trailing_trim)
+        expected_median_yoy = compound_annual_percent(trailing_median)
+        last_row = history[-1]
+        if not isinstance(last_row, dict):
+            raise ValueError("history rows must be mappings")
+        stored_history_trim_yoy = _require_float(
+            last_row.get("trim_yoy_percent", ""), "history trim_yoy"
+        )
+        stored_history_median_yoy = _require_float(
+            last_row.get("median_yoy_percent", ""), "history median_yoy"
+        )
+        diffs = [
+            abs(recomputed.trim_mom_percent - stored_trim_mom),
+            abs(recomputed.median_mom_percent - stored_median_mom),
+            abs(expected_trim_yoy - stored_trim_yoy),
+            abs(expected_median_yoy - stored_median_yoy),
+            abs(expected_trim_yoy - stored_history_trim_yoy),
+            abs(expected_median_yoy - stored_history_median_yoy),
+        ]
+        worst = max(diffs)
+        # Tolerance is 1 bp in percent units: 0.01.
+        results.append(
+            CheckResult(
+                "V20",
+                worst <= 0.01,
+                f"trim median YoY recompute worst {worst:.4f} "
+                f"within 0.01 (1 bp in percent units; unit: percent), "
+                f"median {median_component!r} matches recompute",
+            )
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        results.append(CheckResult("V20", False, f"trim median recompute failed: {exc}"))
+
+    try:
+        contributions = inflation.get("contributions", [])
+        if not isinstance(contributions, list) or not contributions:
+            raise ValueError("contributions are missing")
+        if len(contributions) > MAX_CPI_COMPONENTS:
+            raise ValueError("contribution count exceeds the cap before recompute")
+        recomputed_total = 0.0
+        worst_row_diff = 0.0
+        component_ids: set[str] = set()
+        for row in contributions:
+            if not isinstance(row, dict):
+                raise ValueError("contribution rows must be mappings, no filtering")
+            component_id = row.get("component_id", "")
+            if not isinstance(component_id, str) or not component_id:
+                raise ValueError("contribution component_id must be a non empty string")
+            if component_id in component_ids:
+                raise ValueError(f"duplicate contribution component_id: {component_id!r}")
+            component_ids.add(component_id)
+            weight = _require_float(row.get("weight_percent", ""), "weight_percent")
+            rate = _require_float(row.get("monthly_rate_percent", ""), "monthly_rate_percent")
+            stored_part = _require_float(row.get("contribution_pp", ""), "contribution_pp")
+            expected_part = weight * rate / 100.0
+            if expected_part != expected_part or expected_part in (
+                float("inf"),
+                float("-inf"),
+            ):
+                raise ValueError("contribution recomputation overflowed")
+            worst_row_diff = max(worst_row_diff, abs(expected_part - stored_part))
+            recomputed_total += expected_part
+        if recomputed_total != recomputed_total or recomputed_total in (
+            float("inf"),
+            float("-inf"),
+        ):
+            raise ValueError("recomputed contribution total overflowed")
+        stored_total = _require_float(
+            inflation.get("total_contribution_pp", ""), "total_contribution_pp"
+        )
+        reconcile = abs(recomputed_total - stored_total)
+        headline = inflation.get("headline_mom")
+        if not isinstance(headline, dict):
+            raise ValueError("headline_mom quantity is missing")
+        if str(headline.get("unit", "")).strip() != "percent_per_month":
+            raise ValueError(
+                f"headline_mom unit must be percent_per_month, got {headline.get('unit')!r}"
+            )
+        if str(headline.get("source_id", "")) != "derived:cpi_trim_median":
+            raise ValueError("headline_mom source must be derived:cpi_trim_median")
+        headline_value = _quantity_value(headline, "headline_mom")
+        headline_diff = abs(headline_value - recomputed_total)
+        excluded = _require_float(
+            inflation.get("excluded_weight_fraction", ""), "excluded_weight_fraction"
+        )
+        kept = _require_float(inflation.get("kept_weight_fraction", ""), "kept_weight_fraction")
+        excluded_drift = abs(excluded - 0.40)
+        if abs(kept + excluded - 1.0) > 1e-9:
+            raise ValueError("kept plus excluded weights must sum to one")
+        latest = inflation.get("latest")
+        if not isinstance(latest, dict):
+            raise ValueError("latest trim median block is missing")
+        median_component = latest.get("median_component", "")
+        if not isinstance(median_component, str) or median_component not in component_ids:
+            raise ValueError("median component must name one contribution row")
+        passed = (
+            worst_row_diff <= 0.01
+            and reconcile <= 0.01
+            and headline_diff <= 0.01
+            and excluded_drift <= 1e-6
+        )
+        results.append(
+            CheckResult(
+                "V21",
+                passed,
+                f"contributions recompute worst row {worst_row_diff:.4f} pp, "
+                f"recomputed total {recomputed_total:.4f} vs stored {stored_total:.4f} "
+                f"diff {reconcile:.4f} pp within 0.01 pp; headline {headline_value:.4f} "
+                f"diff {headline_diff:.4f} pp; excluded {excluded:.6f} vs 0.40 "
+                f"drift {excluded_drift:.2e} within 1e-6 (unit: percentage_points)",
+            )
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        results.append(CheckResult("V21", False, f"contribution reconcile failed: {exc}"))
+
+    try:
+        if inflation.get("label") != "experimental":
+            raise ValueError("inflation label must be experimental")
+        if inflation.get("is_official") is not False:
+            raise ValueError("inflation is_official must be false")
+        if inflation.get("publisher_series") != "statcan":
+            raise ValueError("inflation publisher_series must be statcan")
+        experimental = inflation.get("experimental_series", "")
+        if not isinstance(experimental, str) or not experimental.startswith("derived:"):
+            raise ValueError("experimental_series must use the derived prefix")
+        bulk = inflation.get("bulk")
+        if not isinstance(bulk, dict):
+            raise ValueError("bulk hash section is missing")
+        expected_products_v22: dict[str, int] = {
+            "cpi_monthly": 18100004,
+            "core_statistics": 18100256,
+            "basket_weights": 18100007,
+        }
+        if set(bulk.keys()) != set(expected_products_v22.keys()):
+            raise ValueError(f"bulk keys must pin the three products, got {sorted(bulk)}")
+        for name, entry in bulk.items():
+            if not isinstance(entry, dict):
+                raise ValueError(f"bulk entry {name!r} must be a mapping")
+            product_id = entry.get("product_id")
+            if isinstance(product_id, bool) or not isinstance(product_id, int):
+                raise ValueError(f"bulk entry {name!r} product_id must be an int")
+            import re as _re_v22
+
+            if not _re_v22.match(r"^[1-9][0-9]{7}$", str(product_id)):
+                raise ValueError(f"bulk entry {name!r} product_id must be an 8 digit id")
+            if product_id != expected_products_v22[name]:
+                raise ValueError(
+                    f"bulk entry {name!r} product id {product_id} "
+                    f"must pin {expected_products_v22[name]}"
+                )
+        validation = inflation.get("validation")
+        if not isinstance(validation, dict):
+            raise ValueError("validation block is missing")
+        months = validation.get("months")
+        if isinstance(months, bool) or not isinstance(months, int):
+            raise ValueError("validation months must be an int without coercion")
+        if months < MIN_VALIDATION_MONTHS:
+            raise ValueError(f"validation needs at least {MIN_VALIDATION_MONTHS} months")
+        gate = _require_float(validation.get("gate_pp", ""), "gate_pp")
+        if abs(gate - MAE_GATE_PP) > 1e-12:
+            raise ValueError(f"validation gate must pin {MAE_GATE_PP}")
+        residuals_trim = _require_float_list(
+            validation.get("residuals_trim_pp", ""), "residuals_trim_pp"
+        )
+        residuals_median = _require_float_list(
+            validation.get("residuals_median_pp", ""), "residuals_median_pp"
+        )
+        if len(residuals_trim) != months or len(residuals_median) != months:
+            raise ValueError("residual lists must match validation months")
+        trim_block = validation.get("trim")
+        median_block = validation.get("median")
+        if not isinstance(trim_block, dict) or not isinstance(median_block, dict):
+            raise ValueError("validation trim and median blocks are missing")
+        for name, block, residuals in (
+            ("trim", trim_block, residuals_trim),
+            ("median", median_block, residuals_median),
+        ):
+            mae = sum(abs(item) for item in residuals) / float(len(residuals))
+            bias = sum(residuals) / float(len(residuals))
+            max_abs = max(abs(item) for item in residuals)
+            if abs(mae - _require_float(block.get("mae_pp", ""), f"{name} mae")) > 1e-9:
+                raise ValueError(f"validation {name} MAE does not recompute")
+            if abs(bias - _require_float(block.get("bias_pp", ""), f"{name} bias")) > 1e-9:
+                raise ValueError(f"validation {name} bias does not recompute")
+            if (
+                abs(max_abs - _require_float(block.get("max_abs_resid_pp", ""), f"{name} max"))
+                > 1e-9
+            ):
+                raise ValueError(f"validation {name} max residual does not recompute")
+        mae_trim = sum(abs(item) for item in residuals_trim) / float(len(residuals_trim))
+        mae_median = sum(abs(item) for item in residuals_median) / float(len(residuals_median))
+        expected_exceeds = bool(mae_trim > gate or mae_median > gate)
+        stored_exceeds = validation.get("exceeds_gate")
+        if not isinstance(stored_exceeds, bool):
+            raise ValueError("exceeds_gate must be a bool without coercion")
+        if stored_exceeds != expected_exceeds:
+            raise ValueError("exceeds_gate must match the recomputed gate outcome")
+        if validation.get("flag") != validation_flag(expected_exceeds):
+            raise ValueError("validation flag must match the gate outcome")
+        # A breached gate flags for explanation and never blocks: V22 passes
+        # whenever the flag is honest, even when exceeds_gate is true.
+        results.append(
+            CheckResult(
+                "V22",
+                True,
+                f"inflation experimental, is_official false, statcan bulk pinned, "
+                f"MAE trim {mae_trim:.4f} median {mae_median:.4f} vs gate {gate} "
+                f"(unit: percentage_points), flag {validation.get('flag')}",
+            )
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        results.append(CheckResult("V22", False, f"inflation label check failed: {exc}"))
+    return results
+
+
+def _quantity_value(node: Any, name: str) -> float:
+    """Extract a finite numeric value from a Quantity mapping."""
+    if not isinstance(node, dict):
+        raise ValueError(f"{name} must be a Quantity mapping")
+    return _require_float(node.get("value", ""), name)
+
+
+def _require_float_list(value: Any, name: str) -> list[float]:
+    """Require a list of finite numbers without string coercion."""
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{name} must be a non empty list")
+    cleaned: list[float] = []
+    for item in value:
+        cleaned.append(_require_float(item, name))
+    return cleaned
 
 
 def summarize(results: list[CheckResult], tolerance_bp: float = TOLERANCE_BP) -> dict[str, Any]:

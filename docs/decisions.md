@@ -1,6 +1,6 @@
 # goc-rates-monitor Decision Records
 
-Last updated: 2026-11-01 (Phase 2)
+Last updated: 2026-11-02 (Phase 4)
 
 ## D01: uv for Python management
 
@@ -132,3 +132,65 @@ and recompute guards keep untrusted snapshot values from crashing the
 verifier. Consequences: V15 validates the full source grammar with a derived
 prefix, V18 validates dates and slopes without str conversion, and arithmetic
 errors fail the affected check.
+
+## D19: Spike then pin the CPI bulk registry
+
+Fetch the StatCan bulk zips for 18100004, 18100256, and 18100007
+(eight digit product ids; the ten digit table suffix form returns
+406) first, list members and hashes in memory, then pin the discovered
+55 component SA series plus the weight vintage in
+`config/cpi_components.yaml`. Rationale: the registry is evidence, not
+a guess, and any upstream reclassification fails closed against the
+pin. Consequences: May 2025 link month on 2024 expenditure weights is
+provisional until the bulk metadata confirms the basket; the live
+spike showed the weights zip at 1.2 MB with two members while the CPI
+data member expands to 161 MB, so the member cap sits at 256 MB with
+the cumulative expansion guard unchanged.
+
+## D20: Reuse StatCan seasonal adjustment as published
+
+Variant A reuses StatCan SA component indexes with no local X-13.
+Rationale: re-adjusting revisable core measures adds error without an
+audit trail. Consequences: every registry row asserts SA true, the
+snapshot records `owns_seasonal_adjustment` false, and SA membership
+changes explain residuals instead of silently shifting history.
+
+## D21: Weighted trim and median on monthly rates with compounding
+
+Trim removes 20 percent of cumulative weight at each tail with partial
+splits on straddling components, median reads the first component past
+50 percent, and annual rates compound the trailing 12 monthly cores.
+Rationale: this mirrors the published method (rank, renormalize the
+kept 60 percent, compound, cohere through rounded indexes).
+Consequences: averaging the 12 monthly rates is a test failure, and
+verify recomputes trim, median, and YoY within 1.0 bp equivalent.
+
+## D22: Validation gate flags but never blocks
+
+Replica YoY validates against published vintages over a trailing 36
+month window with a 24 month minimum; MAE over 0.10 raises a flag, not
+an error. Rationale: upstream revisions move vintages, and the build
+must distinguish revision from arithmetic bug without stopping the
+pipeline on honest misses. Consequences: V22 recomputes MAE, bias, and
+max from stored residuals and requires the flag to match while passing
+either way; hash equality separates bug from revision.
+
+## D23: Bulk hashes distinguish revision from bug
+
+Every snapshot stores the bulk zip sha256 plus a short sha12 per
+product with retrieval UTC and link month vintage. Rationale: when a
+published vintage moves, equal hashes mean local arithmetic is wrong
+and changed hashes mean upstream revised. Consequences: provenance
+carries `statcan_cpi` with the bulk link, vintage, and short hashes,
+and member hashes are computed in memory without extraction.
+
+## D24: Experimental label with minimal page wiring
+
+The inflation section is labelled experimental and unofficial while
+headline CPI stays final, and the page renders publisher versus
+experimental series, the decomposition, the validation flag, the weight
+vintage, and the short bulk hash. Rationale: core measures are
+revisable vintages and the page must not present replica trim as an
+official print. Consequences: V22 asserts the label and status, and the
+site blocks derived displays on failed verification like every other
+section.

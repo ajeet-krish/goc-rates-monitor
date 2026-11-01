@@ -14,6 +14,7 @@ from goc_rates.live_snapshot import build_live_observations, resolve_target_date
 from goc_rates.models import make_quantity
 from goc_rates.snapshot import build_snapshot, write_snapshot
 from goc_rates.verify import verify_file
+from tests.cpi_fixtures import attach_demo_inflation
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "benchmark_map.yaml"
 
@@ -69,27 +70,34 @@ def _write_and_verify(
     assert code == 0
     report = json.loads((directory / "verify.json").read_text(encoding="utf-8"))
     assert report["passed"] is True
-    assert report["passed_count"] == 18
+    assert report["passed_count"] == 22
     assert report["failed_count"] == 0
     return report
 
 
-def test_live_full_pass_v01_to_v18(tmp_path: Path) -> None:
-    """Mocked Valet plus FRED histories yield a snapshot that passes V01-V18."""
+def _attach_inflation(observations: dict[str, Any], provenance: dict[str, Any]) -> None:
+    """Attach the demo inflation section plus provenance for V19 to V22."""
+    attach_demo_inflation(observations, provenance)
+
+
+def test_live_full_pass_v01_to_v22(tmp_path: Path) -> None:
+    """Mocked Valet plus FRED histories yield a snapshot that passes V01-V22."""
     benchmark_map = load_benchmark_map(CONFIG)
     valet_by_series, fred_by_series, last = _histories()
     snapshot_date = dt.date.fromisoformat(last)
     observations, provenance, warnings = build_live_observations(
         snapshot_date, benchmark_map, valet_by_series, fred_by_series, True, None
     )
+    _attach_inflation(observations, provenance)
     report = _write_and_verify(tmp_path, last, observations, provenance, warnings)
     by_id = {item["id"]: item for item in report["checks"]}
     assert by_id["V16"]["passed"] is True
     assert by_id["V18"]["passed"] is True
+    assert by_id["V22"]["passed"] is True
     assert "mock" not in json.dumps(observations).lower()
 
 
-def test_live_degraded_fred_passes_v01_to_v18(tmp_path: Path) -> None:
+def test_live_degraded_fred_passes_v01_to_v22(tmp_path: Path) -> None:
     """A missing FRED key marks spreads and backtest missing but still passes."""
     benchmark_map = load_benchmark_map(CONFIG)
     valet_by_series, _, last = _histories()
@@ -98,6 +106,7 @@ def test_live_degraded_fred_passes_v01_to_v18(tmp_path: Path) -> None:
         snapshot_date, benchmark_map, valet_by_series, {}, False, None
     )
     assert any("FRED degraded" in item for item in warnings)
+    _attach_inflation(observations, provenance)
     report = _write_and_verify(tmp_path, last, observations, provenance, warnings)
     by_id = {item["id"]: item for item in report["checks"]}
     assert by_id["V16"]["passed"] is True

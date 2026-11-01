@@ -23,6 +23,8 @@ Unit = Literal[
     "duration_years",
     "dv01_per_million",
     "unitless_ratio",
+    "percent_per_month",
+    "percentage_points",
 ]
 SourceId = str
 Quality = Literal["observed", "missing", "stale", "revised"]
@@ -67,6 +69,8 @@ ALLOWED_UNITS: frozenset[str] = frozenset(
         "duration_years",
         "dv01_per_million",
         "unitless_ratio",
+        "percent_per_month",
+        "percentage_points",
     }
 )
 

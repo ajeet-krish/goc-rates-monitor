@@ -151,13 +151,13 @@ describe("validators reject verify problems", () => {
     report.checks = [];
     report.passed_count = 0;
     report.failed_count = 0;
-    assert.throws(() => validateVerify(report), /exactly 18 checks/);
+    assert.throws(() => validateVerify(report), /exactly 22 checks/);
   });
 
-  it("rejects a report with non V01 to V18 ids", () => {
+  it("rejects a report with non V01 to V22 ids", () => {
     const report = goodVerify();
-    report.checks[17].id = "V19";
-    assert.throws(() => validateVerify(report), /exactly V01 to V18/);
+    report.checks[21].id = "V23";
+    assert.throws(() => validateVerify(report), /exactly V01 to V22/);
   });
 
   it("rejects duplicate check ids", () => {
@@ -182,10 +182,38 @@ describe("validators reject verify problems", () => {
     assert.throws(() => validateVerify(report), /inconsistent/);
   });
 
-  it("expects exactly V01 to V18", () => {
+  it("expects exactly V01 to V22", () => {
     assert.equal(EXPECTED_VERIFY_IDS.length, MAX_VERIFY_CHECKS);
     assert.equal(EXPECTED_VERIFY_IDS[0], "V01");
-    assert.equal(EXPECTED_VERIFY_IDS[17], "V18");
+    assert.equal(EXPECTED_VERIFY_IDS[21], "V22");
+  });
+
+  it("accepts the mock inflation section through the snapshot validator", () => {
+    assert.doesNotThrow(() => validateSnapshot(goodSnapshot(), MOCK_DATE));
+  });
+
+  it("rejects a non experimental inflation label", () => {
+    const doc = goodSnapshot();
+    doc.observations.inflation.label = "official";
+    assert.throws(() => validateSnapshot(doc, MOCK_DATE), /must be experimental/);
+  });
+
+  it("rejects an inflation bulk section without the three pinned products", () => {
+    const doc = goodSnapshot();
+    doc.observations.inflation.bulk = { cpi_monthly: doc.observations.inflation.bulk.cpi_monthly };
+    assert.throws(() => validateSnapshot(doc, MOCK_DATE), /three products/);
+  });
+
+  it("rejects inflation residuals that do not recompute the MAE", () => {
+    const doc = goodSnapshot();
+    doc.observations.inflation.validation.residuals_trim_pp[0] = 5;
+    assert.throws(() => validateSnapshot(doc, MOCK_DATE), /does not recompute/);
+  });
+
+  it("rejects inflation weights that drift from 100", () => {
+    const doc = goodSnapshot();
+    doc.observations.inflation.contributions[0].weight_percent += 2;
+    assert.throws(() => validateSnapshot(doc, MOCK_DATE), /expected 100 within/);
   });
 });
 

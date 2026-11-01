@@ -245,6 +245,81 @@ curve, inflation, placeholder, methods, verification, breaks; compare overlay
 - [x] All sources cited
 - [x] Research supports phase architecture decisions
 
+## 2026-11-01 - Phase 4 CPI engine: trim, median, SA reuse, weights, GST break, vintages
+
+Phase 4 builds: ingest StatCan CPI component weights plus SA plus NSA bulk
+(0004, 0006, 0256, 0259, 0007), hash downloads to distinguish upstream revision
+from local arithmetic error, compute CPI-trim plus CPI-median under two SA
+variants (chosen: reuse StatCan SA as canonical), trim rank 1M remove 20pct top
+plus bottom by weight then renormalize, median weighted median same
+distribution, validate 10y versus published with winner MAE plus residual table
+every month over 0.1pp explained, decompositions (shelter, food, energy, goods
+ex food and energy, services ex shelter), error table with headline plus
+experimental label. Decision: reuse StatCan SA, do not refit X-13 in v1.
+
+### Key Findings
+| Finding | Source | Confidence | Application |
+|---------|--------|------------|-------------|
+| Official trim/median use fixed 55-component disaggregation (exhaustive, mutually exclusive, weights sum to 100, national only, history from Jan 1989). Full Table A1 list is Meat (01) through Tobacco (55); starred series partly constructed by BoC (e.g. leasing of passenger vehicles, other owned accommodation). Count changed 54 to 55 in 2016 methods update | StatCan 2301_D64_T9_V3 methodology plus Table A1 appendix | High | Engine hard-codes 55-item Table A1 map; assert 55 rows every month; fail closed on count drift |
+| Input pipeline is tax-adjusted then SA: 55 NSA component indexes first adjusted to remove indirect-tax changes, then SA. Only 44 of 55 series are SA at introduction (rest have no identifiable seasonality); SA set is re-evaluated yearly so the SA member list can change. Each SA series adjusted separately | StatCan 2301_D64_T9_V3 Revisions and SA section | High | Two-variant design: Variant A canonical reuses StatCan SA; Variant B diagnostic bounds SA-membership effect; log which of the 55 were SA each vintage |
+| Trim is weighted monthly distribution, not annual: sort 55 SA tax-adjusted m/m rates ascending with basket-link-month weights, exclude bottom 20pct plus top 20pct of cumulative weight (40pct total removed). Boundary rule: first component straddling 20pct (or 80pct) contributes only the partial weight needed. Excluded set varies monthly | StatCan 2301_D64_T9_V3 Steps 1-3, Notes 4-5 | High | Implement cumulative-weight rank with partial-weight split; store excluded names plus kept weight (must equal 60pct) per month |
+| Median is same distribution 50th percentile: first component where cumulative weight exceeds 50pct; median component varies monthly. Equivalent to trimming everything except the midpoint | StatCan 2301_D64_T9_V3 median Steps 1-3, Note 6 | High | Implement single-pass sort shared with trim; record median component identity per month for residual forensics |
+| Annual rate is compounding, not mean: y/y equals product of (1 plus m/m over 100) minus 1 times 100 over 12 months ending in t. Since Jan 2024 release, published y/y is computed from trim/median indexes rounded to one decimal (coherence fix) | StatCan 2301_D64_T9_V3 Step 4 formulas; Daily Jan-2024 change note | High | Engine must compound 12 monthly trimmed/medians; then round-trip through 1-decimal index replica for published comparison; never average the 12 m/m |
+| Revision policy changed with Jan 2026 release: trim/median now revised 3y back each January plus 1m in all other months (aligns with SA table 18-10-0006-01 and international practice). Prior rule was 7y every release. SA table itself revises prior month monthly plus 3y each January; models revisited as needed | Daily Jan-2026 Note to readers; 2301_D64_T9_V3 Note 9 as amended 2026-02-17 | High | Hash every bulk zip plus record WDS releaseTime; diff 0256 vintage to classify over 0.1pp moves as upstream revision vs arithmetic bug; keep 84-month backfill only for pre-2026 history |
+| Real-time vintage table 18-10-0259-01 exists precisely to hold historical release vintages (ex CANSIM 326-8023); updated with lag (e.g. Mar 2 for Jan release). 0256 holds current-vintage levels plus y/y; 0259 is the audit trail | StatCan table catalogue; Daily Jan-2026 real-time note | High | Validator joins replica to 0259 vintage matching release date, not just 0256 current; pin vintage date in snapshot |
+| Basket weight vintage must be pinned at link-month prices: 2024-expenditure basket introduced with May 2025 release (June 24 2025 Daily). Weights at basket-reference prices price-updated to link-month hybrid expenditures. 2024 shares: shelter 29.12pct, MIC 5.65pct (plus 45bp), rent 7.19pct (plus 33bp), food 16.72pct, transport 17.29pct | StatCan 62F0014M2025003 plus tables 1-2; Daily May-2025 | High | Snapshot stores basket vintage (2024/link month) plus 0007 sha; apply weight vintage active at observation month when backfilling 10y |
+| Temporary GST/HST break Dec 14 2024 to Feb 15 2025 covered about 10pct of basket at final tax-inclusive prices; affected restaurant meals, alcohol, toys/games/hobby, children clothing. Creates base-year y/y distortions through Mar 2026 (e.g. restaurant meals plus 12.3pct y/y Jan 2026, plus 7.8pct Feb then plus 3.2pct Mar as break falls out; gasoline minus 16.7pct y/y Jan 2026 is separate energy story) | Daily Jan-2026 GST break box; Daily Mar-2026 base-effect note; Daily Dec-2024 | High | Decompositions must flag Dec 2024 to Mar 2026 tax window; tax-adjusted core inputs already strip indirect taxes but headline replica must retain them; error table carries experimental label on affected months |
+| Prior Phase 1 carryover: 55 components with 43 SA in earlier vintage, and Khan-Morel-Sabourin 2015 enhancement framing (trim about 9bp, median about 37bp, tight MAE about 0.15) remain directionally useful but SA count is now 44 and must be re-asserted per vintage, not hard-coded | docs/research.md Phase 1; Khan et al. 2015 via StatCan doc | Medium | Re-assert SA count from bulk metadata each fetch; do not hard-code 43 or 44 |
+| BoC published cross-check anchors: Sep 2026 headline 3.1pct y/y with trim 1.8pct and median 1.9pct; Jan 2026 headline 2.3pct with trim 2.4pct and median 2.5pct; SA m/m plus 0.1pct Jan 2026 | BoC CPI page; Daily Jan-2026; TD Sep-2026 summary | High | Golden tests pin Sep 2026 plus Jan 2026 plus GST-window months |
+
+### Relevant Equations
+| Equation | Description | Variables |
+|----------|-------------|-----------|
+| `r_i = (I_i,t / I_i,t-1 - 1) * 100` | SA tax-adjusted monthly rate per component | I SA tax-adjusted index, i in 1..55, t month |
+| `order r_(1) <= ... <= r_(55); C_k = sum_{j<=k} w_(j)` | Rank by rate carrying basket-link-month weight | w basket weight at link month, C cumulative weight 0-100 |
+| `trim_m/m = sum_{i in kept} w'_i * r_i; w'_i = w_i / sum_kept` with kept equals 20 < C <= 80 plus partial splits at 20 and 80 | Trimmed weighted mean, kept weight renormalized to 60pct | Partial split per Notes 4-5: only the needed slice of straddling component counts |
+| `median_m/m = r_(k*) where k* = first k with C_k > 50` | Weighted median monthly rate | Same sorted distribution as trim |
+| `core_y/y_t = (prod_{s=t-11..t} (1 + core_m/m_s / 100) - 1) * 100` | Annual core by compounding 12 monthly cores | core in {trim, median}; never arithmetic mean |
+| `core_y/y_pub = (J_t / J_t-12 - 1) * 100` where J rounded to 1 decimal | Published y/y since Jan 2024 (coherence rule) | J trim/median index level rounded to 1dp |
+| `contrib_c = w_c * r_c / 100` (pp) and `share = contrib / headline_m/m` | Decomposition contribution in percentage points | w link-month weight pct, r component m/m pct |
+| `resid_t = replica_t - published_vintage_t; MAE = mean(abs(resid))` over 10y | Winner validation metric | Replica vs 0259-vintage published; flag any abs resid over 0.1pp |
+
+### Validation Data
+| Benchmark | Value | Source | Uncertainty |
+|-----------|-------|--------|-------------|
+| 55-component list Table A1 (Meat through Tobacco) | 55 exhaustive items | StatCan 2301_D64_T9_V3 appendix | Fixed disaggregation; reclassification risk pre-1989 |
+| SA coverage at introduction | 44 of 55 SA | StatCan methodology doc | Re-evaluated yearly; assert per vintage |
+| Basket 2024: shelter 29.12pct, MIC 5.65pct, rent 7.19pct | See row | StatCan 62F0014M2025003 | Rounding; link-month price-updating |
+| Trim exclusion | 20pct each tail, 40pct total, 60pct kept | StatCan methodology | Partial-weight boundary rule |
+| Median definition | 50th percentile by weight | StatCan methodology | First C_k over 50 rule |
+| Revision window current | 3y each Jan plus 1m otherwise; was 7y each release | Daily Jan-2026; methodology Note 9 | Model revisits can extend |
+| GST/HST break window | 2024-12-14 to 2025-02-15, about 10pct basket | Daily Jan-2026 box | Final-price tax-inclusive CPI |
+| Sep 2026 published | Headline 3.1pct, trim 1.8pct, median 1.9pct | BoC CPI page; TD Economics 2026-10-19 | Revisable core |
+| Jan 2026 published | Headline 2.3pct, trim 2.4pct, median 2.5pct, SA m/m plus 0.1pct | Daily Jan-2026 | Revisable core |
+| Sep 2026 grocery moderation | Food from stores plus 1.7pct y/y (from plus 2.8pct Aug) | TD Sep-2026 | NSA headline component |
+| Real-time table lag example | 0259 updated Mar 2 for Jan release | Daily Jan-2026 | Consult RCT doc for schedule |
+
+### Practical Implications
+- Canonical Variant A (shipped): reuse StatCan SA component indexes directly (tax-adjusted plus SA as published); no local X-13. Diagnostic Variant B (internal envelope): same trim/median math on NSA tax-adjusted inputs to bound SA effect; publish A, log B minus A spread; SA-membership changes go to B explanation first.
+- Ingest pins: 0004 NSA, 0006 SA, 0256 current core, 0259 vintages, 0007 weights; per snapshot record productId, WDS releaseTime, cube start/end dates, zip URL, sha256 of zip bytes, retrieval UTC, active basket vintage plus link month.
+- Hash rule distinguishes revision from bug: if 0256/0259 vintage value moved but zip hash changed, classify as upstream revision; if hash identical but replica differs, classify as arithmetic bug and block build.
+- Weight vintage pinning: backfill 10y with period-correct basket vintage (link-month weights active at each month); never apply 2024 weights to the full 10y.
+- Compounding guard: implement product formula; add unit test that mean-of-12 fails golden (e.g. Sep 2026) while product passes within 0.05pp before 1-decimal rounding.
+- Tax window handling: flag 2024-12 through 2026-03 months experimental in error table; headline replica keeps taxes in, core inputs use tax-adjusted series; decomposition pages carry GST-break footnote with 10pct coverage and affected groups.
+- Residual table: every month 10y history, columns replica trim/median, vintage published, resid, winner flag; any abs resid over 0.1pp requires named explanation (revision vintage, weight vintage, rounding, SA-member change, tax window) before pass.
+- Decomposition build from 0004/0006 aggregates: shelter, food, energy, goods ex food and energy, services ex shelter; contributions in pp with weights shown; SA headline m/m plus NSA y/y shown side by side with vintage note.
+
+### Citations
+1. Statistics Canada, "The Bank of Canada's Preferred Measures of Core Inflation Methodology Document" 2301_D64_T9_V3 (Table A1 55 components, trim/median steps, compounding, 44 SA, revision Note 9 amended 2026-02-17) - https://www.statcan.gc.ca/en/statistical-programs/document/2301_D64_T9_V3
+2. Statistics Canada, Daily CPI Jan 2026 (revision policy change to 3y plus 1m, GST break Dec14 2024 to Feb15 2025 about 10pct, Jan 2026 2.3pct headline trim 2.4 median 2.5) - https://www150.statcan.gc.ca/n1/daily-quotidien/260217/dq260217a-eng.htm
+3. Statistics Canada, Daily CPI Jan 2024 (trim/median y/y from 1-decimal indexes) - https://www150.statcan.gc.ca/n1/daily-quotidien/240220/dq240220a-eng.htm
+4. Statistics Canada, Daily CPI Mar 2026 (GST base-year fallout Mar 2026) - https://www150.statcan.gc.ca/n1/daily-quotidien/260420/dq260420a-eng.htm
+5. Statistics Canada, 62F0014M2025003 basket 2024 analysis (shelter 29.12, MIC 5.65, rent 7.19) - https://www150.statcan.gc.ca/n1/pub/62f0014m/62f0014m2025003-eng.htm
+6. Statistics Canada, tables 18-10-0004-01, 18-10-0006-01, 18-10-0256-01, 18-10-0259-01, 18-10-0007-01 catalogue pages
+7. Bank of Canada, CPI page (Sep 2026 3.1 headline, 1.8 trim, 1.9 median back to 2015 history) - https://www.bankofcanada.ca/rates/price-indexes/cpi/
+8. Khan, Morel, Sabourin 2015 Discussion Paper 2015-12 and 2013 Working Paper 2013-35 (selection basis, factor model for common) via StatCan doc references
+9. TD Economics, Canadian CPI Sep 2026 2026-10-19 (benign core, grocery 1.7pct)
+
 ### Verification Checklist
 - [x] Findings are from reputable sources
 - [x] Equations are correctly transcribed

@@ -1,4 +1,4 @@
-import type { DataIndex, SnapshotDoc, VerifyReport } from "../types";
+import type { DataIndex, InflationSection, SnapshotDoc, VerifyReport } from "../types";
 
 function tbillPrice(yieldPercent: number, days: number): number {
   return 100 / (1 + (yieldPercent / 100) * (days / 365));
@@ -7,6 +7,127 @@ function tbillPrice(yieldPercent: number, days: number): number {
 const curveDiscount = (y: number, t: number): number => 1 / Math.pow(1 + y / 200, 2 * t);
 
 export const MOCK_DATE = "2026-10-30";
+
+function mockInflation(): InflationSection {
+  const weight = 100 / 55;
+  const flatMonthly = 0.2;
+  const flatYoy = 2.4266;
+  const contributions = Array.from({ length: 55 }, (_, i) => {
+    const id = "C" + String(i + 1).padStart(2, "0");
+    return {
+      component_id: id,
+      monthly_rate_percent: flatMonthly,
+      weight_percent: weight,
+      contribution_pp: (weight * flatMonthly) / 100,
+    };
+  });
+  const publishedMonths = Array.from({ length: 28 }, (_, i) => {
+    const stamp = 2024 * 12 + 5 + i;
+    const year = Math.floor(stamp / 12);
+    const month = (stamp % 12) + 1;
+    return year + "-" + String(month).padStart(2, "0");
+  });
+  const zeros = Array.from({ length: 28 }, () => 0);
+  const historyMonths = Array.from({ length: 12 }, (_, i) => {
+    const stamp = 2025 * 12 + 9 + i;
+    const year = Math.floor(stamp / 12);
+    const month = (stamp % 12) + 1;
+    return year + "-" + String(month).padStart(2, "0");
+  });
+  const fakeSha =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  return {
+    label: "experimental",
+    is_official: false,
+    publisher_series: "statcan",
+    experimental_series: "derived:cpi_trim_median",
+    method: "cpi_trim_median_weighted_sa_v1",
+    owns_seasonal_adjustment: false,
+    seasonally_adjusted_source: "statcan",
+    component_count: 55,
+    weight_vintage: { expenditure_year: 2024, link_month: "2025-05", provisional: true },
+    reference_month: "2026-09",
+    indexes: {
+      months: ["2026-08", "2026-09"],
+      trim: [100.4, 100.6].map((value) => ({
+        value,
+        unit: "index_points",
+        quality: "observed",
+        source_id: "derived:cpi_trim_median",
+      })),
+      median: [100.3, 100.5].map((value) => ({
+        value,
+        unit: "index_points",
+        quality: "observed",
+        source_id: "derived:cpi_trim_median",
+      })),
+    },
+    latest: {
+      month: "2026-09",
+      trim_mom: {
+        value: flatMonthly,
+        unit: "percent_per_month",
+        quality: "observed",
+        source_id: "derived:cpi_trim_median",
+      },
+      median_mom: {
+        value: flatMonthly,
+        unit: "percent_per_month",
+        quality: "observed",
+        source_id: "derived:cpi_trim_median",
+      },
+      trim_yoy: {
+        value: flatYoy,
+        unit: "percent",
+        quality: "observed",
+        source_id: "derived:cpi_trim_median",
+      },
+      median_yoy: {
+        value: flatYoy,
+        unit: "percent",
+        quality: "observed",
+        source_id: "derived:cpi_trim_median",
+      },
+      median_component: "C28",
+    },
+    history: historyMonths.map((month) => ({
+      month,
+      trim_mom_percent: flatMonthly,
+      median_mom_percent: flatMonthly,
+      median_component: "C28",
+      trim_yoy_percent: flatYoy,
+      median_yoy_percent: flatYoy,
+    })),
+    history_months: 12,
+    contributions,
+    total_contribution_pp: contributions.reduce((sum, row) => sum + row.contribution_pp, 0),
+    headline_mom: {
+      value: flatMonthly,
+      unit: "percent_per_month",
+      quality: "observed",
+      source_id: "derived:cpi_trim_median",
+    },
+    kept_weight_fraction: 0.6,
+    excluded_weight_fraction: 0.4,
+    validation: {
+      months: 28,
+      gate_pp: 0.1,
+      trim: { mae_pp: 0, bias_pp: 0, max_abs_resid_pp: 0 },
+      median: { mae_pp: 0, bias_pp: 0, max_abs_resid_pp: 0 },
+      exceeds_gate: false,
+      flag: "within_gate",
+      note: "mock replica matches its published vintage",
+      published_months: publishedMonths,
+      residuals_trim_pp: zeros,
+      residuals_median_pp: zeros,
+    },
+    bulk: {
+      cpi_monthly: { product_id: 18100004, zip_sha256: fakeSha, zip_sha12: fakeSha.slice(0, 12) },
+      core_statistics: { product_id: 18100256, zip_sha256: fakeSha, zip_sha12: fakeSha.slice(0, 12) },
+      basket_weights: { product_id: 18100007, zip_sha256: fakeSha, zip_sha12: fakeSha.slice(0, 12) },
+    },
+  };
+}
 
 export const mockSnapshot: SnapshotDoc = {
   metadata: { snapshot_date: MOCK_DATE, created_utc: "2026-10-31T00:00:00Z", schema_version: 1 },
@@ -143,6 +264,7 @@ export const mockSnapshot: SnapshotDoc = {
       slopes_bp: [],
       total_pnl_bp: 0,
     },
+    inflation: mockInflation(),
   },
   provenance: {
     valet: {
@@ -161,11 +283,11 @@ export const mockVerify: VerifyReport = {
   checked_utc: "2026-10-31T00:00:00Z",
   tolerance_bp: 1.0,
   tolerance_unit: "basis_points",
-  passed_count: 18,
+  passed_count: 22,
   failed_count: 0,
   passed: true,
   snapshot_sha256: MOCK_SHA256,
-  checks: Array.from({ length: 18 }, (_, i) => {
+  checks: Array.from({ length: 22 }, (_, i) => {
     const id = "V" + String(i + 1).padStart(2, "0");
     return { id, passed: true, detail: id + " passed on mock fixture (unit: mixed)" };
   }),

@@ -1,6 +1,36 @@
 # GoC Test Results
 
-Last updated: 2026-11-02
+Last updated: 2026-11-01
+
+## 2026-11-02 - Phase 4: Test Report
+
+Phase 4 CPI engine suite in `tests/test_cpi_trim_median.py`,
+`tests/test_cpi_engine.py`, `tests/test_cpi_bulk.py`,
+`tests/test_cpi_golden.py`, and `tests/test_phase4_negatives.py`,
+plus `tests/cpi_fixtures.py` shared demo inflation. Existing
+`tests/test_verify.py` and `tests/test_live_snapshot.py` extend to 22
+checks with the demo inflation attached.
+Run with `uv run pytest` in `/Users/ajeet/Projects/goc-rates-monitor`,
+plus `npm test`, `npm run build`, and `npm run typecheck` in `web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (149 passed) | PASS | Full pipeline suite, includes 56 new Phase 4 tests |
+| test_cpi_trim_median (9 tests) | PASS | Median first over 50, partial tail splits, 60pct renormalize, mean fails while product passes, flat 0.2pct compounds to 2.4266 |
+| test_cpi_engine (13 tests) | PASS | Changes, 55 SA registry load, weight renormalization and drift, vintage pin, contributions, 24 month minimum, gate flag, section labels and hashes |
+| test_cpi_bulk (13 tests) | PASS | Two step fetch, non SUCCESS and non https refusal, declared and buffered caps, non zip and member and count caps, month extraction, truncation, missing vectors, no files written |
+| test_cpi_golden (3 tests) | PASS | Three component golden pins trim 0.2667 percent per month, median A, product YoY, 12 month history, two index months |
+| test_phase4_negatives (18 tests) | PASS | Weight, count, link, SA ownership, reference, sha12, stored trim, excluded weight, label, official, MAE suppression, flag honesty, honest breach passes, missing section |
+| test_verify extended (22 checks) | PASS | Demo inflation attached, full snapshot passes V01 to V22 |
+| test_live_snapshot extended (22 checks) | PASS | Demo inflation attached, full and degraded FRED paths pass V01 to V22 |
+| npm test web (58 passed) | PASS | 53 prior plus 5 new inflation validator tests |
+| npm run build | PASS | vite build clean, InflationPage chunk emitted |
+| npm run typecheck | PASS | tsc noEmit clean |
+| Live spike probe | PASS | 8 digit product ids return SUCCESS with zip URLs, 10 digit returns 406; weights zip 1.2 MB two members hashed in memory; CPI data member 161 MB expanded under the 256 MB member cap with cumulative guard |
+
+Coverage summary: 149 passed (pytest) plus 58 passed (web), 0 failed. Happy path covered (demo inflation passes V19 to V22, golden trim and median, valid web triple). Edge cases covered (median boundary at exactly 50 percent, straddling tail splits, 24 month minimum, trailing 36 window, honest breach). Error conditions covered (weight drift, SA flag, link pin, reference grammar, sha12 mismatch, stored trim move, excluded weight, label and official status, MAE suppression, dishonest flag, missing section, oversize and non zip bulk, missing vectors).
+
+Failure analysis: two interim test faults, both in new test code. The weight sum message match expected the literal 1.0 instead of the formatted total, and the flat 0.2 percent golden used 2.4274 instead of the computed 2.4266. Both fixed in test expectations. One product change from the spike: the registry pins eight digit product ids after the live API returned 406 for ten digit ids, and the member cap moved to 256 MB after the CPI data member measured 161 MB expanded. No other product code defects found.
 
 ## 2026-11-02 - Deploy: Test Report
 
@@ -135,3 +165,37 @@ Phase 2 curve engine boundary plus negative tests. Full suite run with `uv run p
 Coverage summary: 87 passed, 0 failed (59 prior plus 28 new in `tests/test_phase2_negatives.py`). Happy path covered by prior curve, analytics, risk, backtest, and verify goldens. Edge cases covered (254 single signal, 60 year 120 period par, yield edges negative 20 and 30). Error conditions covered (253 short, nonpositive base, nondecreasing discounts, V13 tamper and stored mismatch, V16 record modes, V18 date grammar, tenor and count caps, source id grammar, yield range, OverflowError containment, CLI skeleton). No source changes needed; `uv run ruff check src tests` passes.
 
 Failure analysis: two interim test faults, both in new test code. The yield edge test first used negative 20 in a par knot, which correctly raises since any negative yield implies a discount above 1. Fixed to assert negative 20 and 30 on slope and par price paths. The V18 overflow test first patched `verify.run_backtest`, which does not exist since the import is local to the check runner. Fixed to patch `goc_rates.backtest.run_backtest`. No product code defect found; verify already contains OverflowError via ArithmeticError handling so both overflow probes fail closed.
+
+## 2026-11-01 - Phase 4 lows: Test Report
+
+Phase 4 low coverage in `tests/test_phase4_lows.py` (11 tests) plus
+`web/tests/phase4-lows.test.mjs` (5 tests). Run with `uv run pytest`
+in `/Users/ajeet/Projects/goc-rates-monitor`, plus `npm test`,
+`npm run build`, and `npm run typecheck` in `web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (173 passed) | PASS | Full pipeline suite, 162 prior plus 11 new lows |
+| test_bulk_declared_size_understates_streamed_size_fails_closed | PASS | Declared 5 bytes with 50 streamed bytes fails on the 20 byte streaming cap |
+| test_v21_scaled_contributions_and_total_together_fails | PASS | 1.5x scaled rows plus total plus headline still fails V21 row recompute |
+| test_product_id_999_fails_v19 | PASS | Three digit id breaks the 8 digit grammar in V19 |
+| test_product_id_999_fails_v22 | PASS | Three digit id breaks the bulk pin in V22 |
+| test_duplicate_contribution_component_id_fails_v20_and_v21 | PASS | Repeated component id fails V20 and V21 |
+| test_duplicate_vector_id_rejected_from_specs | PASS | Repeated vector id fails closed on specs load |
+| test_basket_expenditure_year_disagree_fails_closed | PASS | Basket year 2023 versus registry 2024 fails closed |
+| test_basket_weight_disagree_fails_closed | PASS | Weight beyond tolerance fails with disagrees |
+| test_median_mom_only_tamper_fails_v20 | PASS | Median mom moved 5bp alone fails V20 |
+| test_history_median_yoy_tamper_fails_v20 | PASS | History median YoY moved 5bp fails V20 |
+| test_latest_trim_yoy_tamper_fails_v20 | PASS | Latest trim YoY moved 5bp fails trailing compound |
+| npm test web (74 passed) | PASS | 69 prior plus 5 new lows |
+| web rejects a three digit bulk product id | PASS | Product id 999 fails the 8 digit grammar |
+| web rejects a trim_mom tamper with median left intact | PASS | Trim mom moved 5bp alone fails trim recompute |
+| web rejects a median_mom tamper with trim left intact | PASS | Median mom moved 5bp alone fails median recompute |
+| web rejects a history mom edit that breaks the YoY compound | PASS | History trim mom plus 1.0 breaks the trailing compound |
+| web rejects a duplicate contribution component id | PASS | Repeated component id fails duplicate guard |
+| npm run build | PASS | vite build clean, InflationPage chunk emitted |
+| npm run typecheck | PASS | tsc noEmit clean |
+
+Coverage summary: 173 passed (pytest) plus 74 passed (web), 0 failed. Happy path covered (prior demo fixture and mock snapshot still pass V19 to V22). Edge cases covered (1.5x scale factor distinct from the prior 2.0x probe, single mom tampers with the other leg intact, history versus latest YoY tampers). Error conditions covered (understated declared bulk size caught by the streaming cap, 999 product grammar in V19 V22 and web, duplicate contribution and vector ids, basket year and weight disagree).
+
+Failure analysis: no product code defects found. One interim design note: the understated size probe first needed a doctored ZipInfo (declared 5 bytes, streamed 50 bytes, cap 20) so the precheck passes and the streaming guard is the layer that fails closed. No source changes needed.

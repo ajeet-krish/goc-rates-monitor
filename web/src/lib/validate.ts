@@ -22,6 +22,8 @@ export const ALLOWED_UNITS: ReadonlySet<string> = new Set([
   "duration_years",
   "dv01_per_million",
   "unitless_ratio",
+  "percent_per_month",
+  "percentage_points",
 ]);
 
 /** Mirrors the closed Quality set in src/goc_rates/models.py. */
@@ -32,16 +34,18 @@ const ALLOWED_QUALITIES: ReadonlySet<string> = new Set([
   "revised",
 ]);
 
-/** Expected check ids for a passing verify report, mirrors V01 to V18 in verify.py. */
+/** Expected check ids for a passing verify report, mirrors V01 to V22 in verify.py. */
 export const EXPECTED_VERIFY_IDS: ReadonlyArray<string> = Array.from(
-  { length: 18 },
+  { length: 22 },
   (_, i) => "V" + String(i + 1).padStart(2, "0")
 );
 /** Collection caps mirroring the Python pipeline in src/goc_rates/limits.py. */
 export const MAX_KNOTS = 10;
 export const MAX_SPREAD_RECORDS = 2000;
 export const MAX_BACKTEST_OBS = 2000;
-export const MAX_VERIFY_CHECKS = 18;
+export const MAX_VERIFY_CHECKS = 22;
+export const MAX_CPI_COMPONENTS = 128;
+export const MAX_CPI_MONTHS = 240;
 export const MAX_QUANTITIES = 10000;
 export const MAX_INDEX_DATES = 2000;
 export const MAX_PROVENANCE_ENTRIES = 64;
@@ -356,8 +360,7 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
   }
 
   const backtest = observations.backtest;
-  if (backtest !== undefined) {
-    if (!isRecord(backtest)) {
+  if (backtest !== undefined) {    if (!isRecord(backtest)) {
       fail("snapshot.observations.backtest", "backtest must be an object");
     }
     if (typeof backtest.rule !== "string" || backtest.rule.length === 0) {
@@ -394,6 +397,8 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
     );
     assertFiniteNumber(backtest.total_pnl_bp, "snapshot.observations.backtest.total_pnl_bp");
   }
+
+  assertInflation(observations.inflation);
 
   const provenance = doc.provenance;
   if (!isRecord(provenance)) {
@@ -457,6 +462,376 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
   return doc as unknown as SnapshotDoc;
 }
 
+/** Pinned CPI registry facts mirrored from config/cpi_components.yaml. */
+const CPI_COMPONENT_COUNT = 55;
+const CPI_HISTORY_MONTHS = 12;
+const CPI_INDEX_MONTHS = 2;
+const CPI_LINK_MONTH = "2025-05";
+const CPI_EXPENDITURE_YEAR = 2024;
+const CPI_GATE_PP = 0.1;
+const CPI_MIN_MONTHS = 24;
+const CPI_METHOD = "cpi_trim_median_weighted_sa_v1";
+const CPI_HEADLINE_SOURCE = "derived:cpi_trim_median";
+const CPI_BULK_PRODUCT_IDS: Record<string, number> = {
+  cpi_monthly: 18100004,
+  core_statistics: 18100256,
+  basket_weights: 18100007,
+};
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function assertMonth(value: unknown, path: string): asserts value is string {
+  if (typeof value !== "string" || !MONTH_PATTERN.test(value)) {
+    fail(path, "must be a YYYY-MM month: " + JSON.stringify(value));
+  }
+}
+
+/** Validate the experimental inflation section, mirroring V19 to V22 in verify.py. */
+function assertInflation(node: unknown): void {
+  if (node === undefined) return;
+  const path = "snapshot.observations.inflation";
+  if (!isRecord(node)) {
+    fail(path, "inflation must be an object");
+  }
+  if (node.label !== "experimental") {
+    fail(path + ".label", "label must be experimental, got " + JSON.stringify(node.label));
+  }
+  if (node.is_official !== false) {
+    fail(path + ".is_official", "is_official must be false");
+  }
+  if (node.method !== CPI_METHOD) {
+    fail(
+      path + ".method",
+      "method must pin " + CPI_METHOD + ", got " + JSON.stringify(node.method)
+    );
+  }
+  if (node.owns_seasonal_adjustment !== false) {
+    fail(path + ".owns_seasonal_adjustment", "must be false: SA is reused as published");
+  }
+  if (node.seasonally_adjusted_source !== "statcan") {
+    fail(path + ".seasonally_adjusted_source", "must be statcan");
+  }
+  if (node.component_count !== CPI_COMPONENT_COUNT) {
+    fail(
+      path + ".component_count",
+      "must pin " + CPI_COMPONENT_COUNT + " components, got " + JSON.stringify(node.component_count)
+    );
+  }
+  const vintage = node.weight_vintage;
+  if (!isRecord(vintage)) {
+    fail(path + ".weight_vintage", "weight_vintage must be an object");
+  }
+  if (vintage.expenditure_year !== CPI_EXPENDITURE_YEAR) {
+    fail(path + ".weight_vintage.expenditure_year", "must pin " + CPI_EXPENDITURE_YEAR);
+  }
+  if (vintage.link_month !== CPI_LINK_MONTH) {
+    fail(path + ".weight_vintage.link_month", "must pin " + CPI_LINK_MONTH);
+  }
+  if (typeof vintage.provisional !== "boolean") {
+    fail(path + ".weight_vintage.provisional", "must be a boolean");
+  }
+  assertMonth(node.reference_month, path + ".reference_month");
+
+  const indexes = node.indexes;
+  if (!isRecord(indexes)) {
+    fail(path + ".indexes", "indexes must be an object");
+  }
+  if (!Array.isArray(indexes.months) || indexes.months.length !== CPI_INDEX_MONTHS) {
+    fail(path + ".indexes.months", "must hold exactly " + CPI_INDEX_MONTHS + " months");
+  }
+  indexes.months.forEach((m: unknown, i: number) => assertMonth(m, path + ".indexes.months[" + i + "]"));
+  for (const key of ["trim", "median"]) {
+    const series = (indexes as Record<string, unknown>)[key];
+    if (!Array.isArray(series) || series.length !== CPI_INDEX_MONTHS) {
+      fail(path + ".indexes." + key, "must hold exactly " + CPI_INDEX_MONTHS + " quantities");
+    }
+    series.forEach((q: unknown, i: number) => assertQuantity(q, path + ".indexes." + key + "[" + i + "]"));
+  }
+
+  const latest = node.latest;
+  if (!isRecord(latest)) {
+    fail(path + ".latest", "latest must be an object");
+  }
+  assertMonth(latest.month, path + ".latest.month");
+  assertQuantity(latest.trim_mom, path + ".latest.trim_mom");
+  assertQuantity(latest.median_mom, path + ".latest.median_mom");
+  assertQuantity(latest.trim_yoy, path + ".latest.trim_yoy");
+  assertQuantity(latest.median_yoy, path + ".latest.median_yoy");
+  if ((latest.trim_mom as { unit: unknown }).unit !== "percent_per_month") {
+    fail(path + ".latest.trim_mom", "unit must be percent_per_month");
+  }
+  if (typeof latest.median_component !== "string" || latest.median_component.length === 0) {
+    fail(path + ".latest.median_component", "must be a non empty string");
+  }
+
+  if (!Array.isArray(node.history) || node.history.length !== CPI_HISTORY_MONTHS) {
+    fail(path + ".history", "must hold exactly " + CPI_HISTORY_MONTHS + " months");
+  }
+  node.history.forEach((row: unknown, i: number) => {
+    const rowPath = path + ".history[" + i + "]";
+    if (!isRecord(row)) {
+      fail(rowPath, "history row must be an object");
+    }
+    assertMonth(row.month, rowPath + ".month");
+    assertFiniteNumber(row.trim_mom_percent, rowPath + ".trim_mom_percent");
+    assertFiniteNumber(row.median_mom_percent, rowPath + ".median_mom_percent");
+  });
+
+  if (!Array.isArray(node.contributions) || node.contributions.length !== CPI_COMPONENT_COUNT) {
+    fail(path + ".contributions", "must list one row per component");
+  }
+  if (node.contributions.length > MAX_CPI_COMPONENTS) {
+    fail(path + ".contributions", "exceeds the " + MAX_CPI_COMPONENTS + " component cap");
+  }
+  let weightTotal = 0;
+  let recomputedTotal = 0;
+  let worstRowDiff = 0;
+  const seenComponents = new Set<string>();
+  const componentIds: string[] = [];
+  node.contributions.forEach((row: unknown, i: number) => {
+    const rowPath = path + ".contributions[" + i + "]";
+    if (!isRecord(row)) {
+      fail(rowPath, "contribution row must be an object");
+    }
+    if (typeof row.component_id !== "string" || row.component_id.length === 0) {
+      fail(rowPath + ".component_id", "must be a non empty string");
+    }
+    if (seenComponents.has(row.component_id as string)) {
+      fail(rowPath + ".component_id", "duplicate component_id " + JSON.stringify(row.component_id));
+    }
+    seenComponents.add(row.component_id as string);
+    componentIds.push(row.component_id as string);
+    assertFiniteNumber(row.monthly_rate_percent, rowPath + ".monthly_rate_percent");
+    assertFiniteNumber(row.weight_percent, rowPath + ".weight_percent");
+    assertFiniteNumber(row.contribution_pp, rowPath + ".contribution_pp");
+    const expected = ((row.weight_percent as number) * (row.monthly_rate_percent as number)) / 100;
+    const rowDiff = Math.abs(expected - (row.contribution_pp as number));
+    worstRowDiff = Math.max(worstRowDiff, rowDiff);
+    if (rowDiff > 0.01) {
+      fail(
+        rowPath + ".contribution_pp",
+        "must recompute as weight_percent * monthly_rate_percent / 100 within 0.01 pp, " +
+          "expected " + expected + " got " + (row.contribution_pp as number)
+      );
+    }
+    recomputedTotal += expected;
+    weightTotal += row.weight_percent as number;
+  });
+  if (Math.abs(weightTotal - 100) > 1e-6) {
+    fail(path + ".contributions", "weights sum to " + weightTotal + ", expected 100 within 1e-6");
+  }
+  assertFiniteNumber(node.total_contribution_pp, path + ".total_contribution_pp");
+  if (Math.abs((node.total_contribution_pp as number) - recomputedTotal) > 0.01) {
+    fail(
+      path + ".total_contribution_pp",
+      "must match recomputed weight * rate / 100 total within 0.01 pp, " +
+        "recomputed " + recomputedTotal + " stored " + (node.total_contribution_pp as number)
+    );
+  }
+  if (!isRecord(node.headline_mom)) {
+    fail(path + ".headline_mom", "headline_mom quantity is missing");
+  }
+  assertQuantity(node.headline_mom, path + ".headline_mom");
+  if ((node.headline_mom as { unit: unknown }).unit !== "percent_per_month") {
+    fail(path + ".headline_mom", "unit must be percent_per_month");
+  }
+  if ((node.headline_mom as { source_id: unknown }).source_id !== CPI_HEADLINE_SOURCE) {
+    fail(path + ".headline_mom", "source_id must be " + CPI_HEADLINE_SOURCE);
+  }
+  if (Math.abs(((node.headline_mom as { value: number }).value as number) - recomputedTotal) > 0.01) {
+    fail(
+      path + ".headline_mom",
+      "value must match the recomputed weighted mean within 0.01 pp"
+    );
+  }
+  if (!componentIds.includes(latest.median_component as string)) {
+    fail(
+      path + ".latest.median_component",
+      "must name one contribution row, got " + JSON.stringify(latest.median_component)
+    );
+  }
+  {
+    const rows = node.contributions as Array<{
+      component_id: string;
+      monthly_rate_percent: number;
+      median_component?: unknown;
+      weight_percent: number;
+    }>;
+    const ordered = [...rows].sort((a, b) => {
+      if (a.monthly_rate_percent !== b.monthly_rate_percent) {
+        return (
+          (a.monthly_rate_percent as number) - (b.monthly_rate_percent as number)
+        );
+      }
+      return a.component_id < b.component_id ? -1 : a.component_id > b.component_id ? 1 : 0;
+    });
+    let cumulative = 0;
+    let medianRate = 0;
+    let medianId = "";
+    let trimNumerator = 0;
+    let keptTotal = 0;
+    for (const row of ordered) {
+      const fraction = (row.weight_percent as number) / 100;
+      const previous = cumulative;
+      cumulative += fraction;
+      if (medianId === "" && cumulative > 0.5) {
+        medianRate = row.monthly_rate_percent as number;
+        medianId = row.component_id as string;
+      }
+      const kept = Math.max(
+        0,
+        Math.min(cumulative, 0.8) - Math.max(previous, 0.2)
+      );
+      trimNumerator += (row.monthly_rate_percent as number) * kept;
+      keptTotal += kept;
+    }
+    const recomputedTrim = trimNumerator / keptTotal;
+    const storedTrim = ((latest.trim_mom as unknown as { value: number }).value as number);
+    const storedMedian = ((latest.median_mom as unknown as { value: number }).value as number);
+    if (medianId !== (latest.median_component as string)) {
+      fail(
+        path + ".latest.median_component",
+        "must match the recomputed weighted median " + JSON.stringify(medianId) +
+          ", got " + JSON.stringify(latest.median_component)
+      );
+    }
+    if (Math.abs(recomputedTrim - storedTrim) > 0.01) {
+      fail(
+        path + ".latest.trim_mom",
+        "must match the recomputed weighted trim within 0.01, recomputed " +
+          recomputedTrim + " stored " + storedTrim
+      );
+    }
+    if (Math.abs(medianRate - storedMedian) > 0.01) {
+      fail(
+        path + ".latest.median_mom",
+        "must match the recomputed weighted median within 0.01, recomputed " +
+          medianRate + " stored " + storedMedian
+      );
+    }
+  }
+  {
+    const historyRows = node.history as Array<{ trim_mom_percent: number; median_mom_percent: number }>;
+    const compound = (monthly: number[]): number => {
+      let factor = 1;
+      for (const m of monthly) factor *= 1 + m / 100;
+      return (factor - 1) * 100;
+    };
+    const trailingTrim = historyRows.map((r) => r.trim_mom_percent as number);
+    const trailingMedian = historyRows.map((r) => r.median_mom_percent as number);
+    const expectedTrimYoy = compound(trailingTrim.slice(-12));
+    const expectedMedianYoy = compound(trailingMedian.slice(-12));
+    if (Math.abs(expectedTrimYoy - ((latest.trim_yoy as { value: number }).value as number)) > 0.01) {
+      fail(
+        path + ".latest.trim_yoy",
+        "must compound the trailing 12 history moms within 0.01, expected " +
+          expectedTrimYoy
+      );
+    }
+    if (
+      Math.abs(expectedMedianYoy - ((latest.median_yoy as { value: number }).value as number)) > 0.01
+    ) {
+      fail(
+        path + ".latest.median_yoy",
+        "must compound the trailing 12 history moms within 0.01, expected " +
+          expectedMedianYoy
+      );
+    }
+  }
+  assertFiniteNumber(node.kept_weight_fraction, path + ".kept_weight_fraction");
+  assertFiniteNumber(node.excluded_weight_fraction, path + ".excluded_weight_fraction");
+  if (Math.abs((node.excluded_weight_fraction as number) - 0.4) > 1e-6) {
+    fail(path + ".excluded_weight_fraction", "must pin 0.40 within 1e-6");
+  }
+
+  const validation = node.validation;
+  if (!isRecord(validation)) {
+    fail(path + ".validation", "validation must be an object");
+  }
+  if (
+    typeof validation.months !== "number" ||
+    !Number.isInteger(validation.months) ||
+    validation.months < CPI_MIN_MONTHS
+  ) {
+    fail(path + ".validation.months", "must be an integer of at least " + CPI_MIN_MONTHS);
+  }
+  if (Math.abs((validation.gate_pp as number) - CPI_GATE_PP) > 1e-12) {
+    fail(path + ".validation.gate_pp", "must pin " + CPI_GATE_PP);
+  }
+  for (const key of ["trim", "median"]) {
+    const block = (validation as Record<string, unknown>)[key];
+    const residuals = (validation as Record<string, unknown>)["residuals_" + key + "_pp"];
+    if (!isRecord(block)) {
+      fail(path + ".validation." + key, "must be an object");
+    }
+    if (!Array.isArray(residuals) || residuals.length !== validation.months) {
+      fail(path + ".validation.residuals_" + key + "_pp", "must match validation months");
+    }
+    const numbers = (residuals as unknown[]).map((r, i) => {
+      assertFiniteNumber(r, path + ".validation.residuals_" + key + "_pp[" + i + "]");
+      return r as number;
+    });
+    const mae = numbers.reduce((a, b) => a + Math.abs(b), 0) / numbers.length;
+    const bias = numbers.reduce((a, b) => a + b, 0) / numbers.length;
+    const maxAbs = Math.max(...numbers.map((r) => Math.abs(r)));
+    if (Math.abs(mae - (block.mae_pp as number)) > 1e-9) {
+      fail(path + ".validation." + key, "MAE does not recompute from residuals");
+    }
+    if (Math.abs(bias - (block.bias_pp as number)) > 1e-9) {
+      fail(path + ".validation." + key, "bias does not recompute from residuals");
+    }
+    if (Math.abs(maxAbs - (block.max_abs_resid_pp as number)) > 1e-9) {
+      fail(path + ".validation." + key, "max residual does not recompute");
+    }
+  }
+  const trimMae = (validation.trim as { mae_pp: number }).mae_pp;
+  const medianMae = (validation.median as { mae_pp: number }).mae_pp;
+  const expectedExceeds = trimMae > CPI_GATE_PP || medianMae > CPI_GATE_PP;
+  if (validation.exceeds_gate !== expectedExceeds) {
+    fail(path + ".validation.exceeds_gate", "must match the recomputed gate outcome");
+  }
+  const expectedFlag = expectedExceeds ? "exceeds_gate_needs_explanation" : "within_gate";
+  if (validation.flag !== expectedFlag) {
+    fail(
+      path + ".validation.flag",
+      "must pin " + expectedFlag + " for the recomputed gate outcome, got " +
+        JSON.stringify(validation.flag)
+    );
+  }
+
+  const bulk = node.bulk;
+  if (!isRecord(bulk)) {
+    fail(path + ".bulk", "bulk must be an object");
+  }
+  const names = Object.keys(bulk).sort();
+  const expected = ["basket_weights", "core_statistics", "cpi_monthly"];
+  if (JSON.stringify(names) !== JSON.stringify(expected)) {
+    fail(path + ".bulk", "must pin the three products, got " + JSON.stringify(names));
+  }
+  for (const [name, entry] of Object.entries(bulk)) {
+    const entryPath = path + ".bulk." + name;
+    if (!isRecord(entry)) {
+      fail(entryPath, "bulk entry must be an object");
+    }
+    assertFiniteNumber(entry.product_id, entryPath + ".product_id");
+    if (!Number.isInteger(entry.product_id) || !/^[1-9][0-9]{7}$/.test(String(entry.product_id))) {
+      fail(entryPath + ".product_id", "must be an 8 digit product id");
+    }
+    if ((entry.product_id as number) !== CPI_BULK_PRODUCT_IDS[name]) {
+      fail(
+        entryPath + ".product_id",
+        "must pin " + CPI_BULK_PRODUCT_IDS[name] + " for " + name +
+          ", got " + (entry.product_id as number)
+      );
+    }
+    if (typeof entry.zip_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(entry.zip_sha256)) {
+      fail(entryPath + ".zip_sha256", "must be a 64 character lowercase hex digest");
+    }
+    if (entry.zip_sha12 !== (entry.zip_sha256 as string).slice(0, 12)) {
+      fail(entryPath + ".zip_sha12", "must prefix its sha256");
+    }
+  }
+}
+
 /** Validate a verify report, including count consistency and digest match. */
 export function validateVerify(doc: unknown, expectedDigest?: string): VerifyReport {
   if (!isRecord(doc)) {
@@ -502,7 +877,7 @@ export function validateVerify(doc: unknown, expectedDigest?: string): VerifyRep
   if ((doc.checks as unknown[]).length !== MAX_VERIFY_CHECKS) {
     fail(
       "verify.checks",
-      "report must contain exactly " + MAX_VERIFY_CHECKS + " checks (V01 to V18), got " +
+      "report must contain exactly " + MAX_VERIFY_CHECKS + " checks (V01 to V22), got " +
         (doc.checks as unknown[]).length
     );
   }
@@ -519,7 +894,7 @@ export function validateVerify(doc: unknown, expectedDigest?: string): VerifyRep
   if (missing.length > 0 || extra.length > 0) {
     fail(
       "verify.checks",
-      "report must contain exactly V01 to V18, missing " +
+      "report must contain exactly V01 to V22, missing " +
         JSON.stringify(missing) +
         " extra " +
         JSON.stringify(extra)

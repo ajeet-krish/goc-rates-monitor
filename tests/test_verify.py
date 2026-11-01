@@ -1,4 +1,4 @@
-"""Verification tests: V01 to V18 checks with a 1.0 basis point tolerance."""
+"""Verification tests: V01 to V22 checks with a 1.0 basis point tolerance."""
 
 import datetime as dt
 import json
@@ -15,6 +15,7 @@ from goc_rates.verify import (
     verify_file,
     verify_snapshot,
 )
+from tests.cpi_fixtures import attach_demo_inflation
 
 
 def _passing_snapshot() -> dict[str, Any]:
@@ -34,7 +35,7 @@ def _passing_snapshot() -> dict[str, Any]:
     dates = [(base + dt.timedelta(days=i)).isoformat() for i in range(260)]
     slopes = [100.0 + float(i % 5) for i in range(260)]
     backtest = run_backtest(dates, slopes)
-    return {
+    snapshot: dict[str, Any] = {
         "metadata": {"snapshot_date": "2026-10-30", "schema_version": 1},
         "observations": {
             "tbill_check": {"yield_percent": 4.0, "price": price, "days_to_maturity": 90},
@@ -101,6 +102,11 @@ def _passing_snapshot() -> dict[str, Any]:
         },
         "manifest": {"snapshot.json": {"sha256": "test-fixture-digest"}},
     }
+    observations = snapshot["observations"]
+    provenance = snapshot["provenance"]
+    assert isinstance(observations, dict) and isinstance(provenance, dict)
+    attach_demo_inflation(observations, provenance)
+    return snapshot
 
 
 def test_tolerance_is_one_basis_point() -> None:
@@ -113,11 +119,11 @@ def test_tbill_price_inversion_matches_formula() -> None:
     assert tbill_price_from_yield(4.0, 365) == 100.0 / 1.04
 
 
-def test_passing_snapshot_passes_all_eighteen_checks() -> None:
-    """A complete snapshot passes V01 to V18."""
+def test_passing_snapshot_passes_all_checks() -> None:
+    """A complete snapshot passes V01 to V22."""
     report = verify_snapshot(_passing_snapshot())
     assert report["passed"] is True
-    assert len(report["checks"]) == 18
+    assert len(report["checks"]) == 22
     assert report["failed_count"] == 0
     assert report["tolerance_unit"] == "basis_points"
 

@@ -4,10 +4,12 @@ Loads the benchmark map, fetches the Valet bond_yields_benchmark group with
 label assertion, targets the previous joint business day in Toronto, records
 CORRA dates without inventing a rate, fetches FRED DGS yields when a key is
 present else marks spreads and backtest missing with degraded quality, skips
-StatCan when no indicators are configured, builds the curve from observed
-yields, joins spreads on same dates where possible, runs the backtest where
-254 joint prints exist else marks it missing, and writes snapshot.json plus
-manifest.json through the canonical snapshot writer.
+StatCan when no indicators are configured, fetches the StatCan CPI bulk
+zips and builds the experimental inflation section with no degraded path,
+builds the curve from observed yields, joins spreads on same dates where
+possible, runs the backtest where 254 joint prints exist else marks it
+missing, and writes snapshot.json plus manifest.json through the canonical
+snapshot writer.
 """
 
 from __future__ import annotations
@@ -22,7 +24,9 @@ from goc_rates.clients.base import BaseClient
 from goc_rates.clients.fred import FRED_BASE_URL, fetch_fred_series, read_api_key
 from goc_rates.clients.statcan import STATCAN_WDS_BASE_URL, fetch_statcan_vectors
 from goc_rates.clients.valet import VALET_BASE_URL, VALET_GROUP, fetch_valet_group
-from goc_rates.config import BenchmarkMap, load_benchmark_map
+from goc_rates.config import BenchmarkMap, load_benchmark_map, load_cpi_config
+from goc_rates.cpi.bulk import BulkTable, fetch_bulk_table
+from goc_rates.cpi.section import build_inflation_section_from_bulk
 from goc_rates.dates import parse_strict_iso_date
 
 FRED_DEGRADED_REASON = "FRED_API_KEY absent, US leg unavailable"
@@ -428,6 +432,11 @@ def run_live_snapshot(
     except (ValueError, OSError) as exc:
         print(f"snapshot failed: {exc}", file=sys.stderr)
         return 2
+    cpi_config_path = (
+        Path(config_path).parent / "cpi_components.yaml"
+        if config_path
+        else Path("config/cpi_components.yaml")
+    )
     try:
         snapshot_date = resolve_target_date(date_text)
     except ValueError as exc:
@@ -499,6 +508,10 @@ def run_live_snapshot(
                         for point in points
                     ]
                 statcan_vectors = packed
+            cpi_config = load_cpi_config(cpi_config_path)
+            cpi_bulk: dict[str, BulkTable] = {}
+            for bulk_name, product_id in cpi_config.product_ids.items():
+                cpi_bulk[bulk_name] = fetch_bulk_table(product_id, client)
         observations, provenance, warnings = build_live_observations(
             snapshot_date,
             benchmark_map,
@@ -507,6 +520,11 @@ def run_live_snapshot(
             fred_available,
             statcan_vectors,
         )
+        inflation_section, cpi_prov_entry = build_inflation_section_from_bulk(
+            cpi_config, cpi_bulk, _retrieved_utc_now()
+        )
+        observations["inflation"] = inflation_section
+        provenance["statcan_cpi"] = cpi_prov_entry
     except Exception as exc:
         print(f"live fetch failed: {exc}", file=sys.stderr)
         return _write_skeleton_fallback(snapshot_date, benchmark_map, directory, str(exc))

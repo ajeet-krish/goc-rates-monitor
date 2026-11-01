@@ -160,6 +160,70 @@ class BaseClient:
             raise last_error
         raise RuntimeError("request retry loop exited without a response")
 
+    def get_bytes(self, url: str, max_bytes: int) -> bytes:
+        """GET a URL and return raw bytes, enforcing a hard streaming byte cap.
+
+        The URL must use https and an allowlisted host, like get. Both the
+        declared Content-Length and the streamed body are capped at
+        max_bytes with chunked reads, so a compromised upstream cannot
+        exhaust memory before the cap trips. Chunks hash incrementally on
+        the caller side via hashlib when needed.
+        """
+        _check_url_allowed(url)
+        if not isinstance(max_bytes, int) or isinstance(max_bytes, bool):
+            raise ValueError("max_bytes must be an int")
+        if max_bytes <= 0:
+            raise ValueError("max_bytes must be positive")
+        last_error: Exception | None = None
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                with self._client.stream("GET", url) as response:
+                    if response.status_code in RETRY_STATUS_CODES and attempt < MAX_ATTEMPTS - 1:
+                        delay = _retry_after_seconds(response, attempt)
+                        response.close()
+                        time.sleep(delay)
+                        continue
+                    if response.status_code >= 400:
+                        response.read()
+                        response.raise_for_status()
+                    declared = response.headers.get("content-length")
+                    if declared is not None:
+                        try:
+                            declared_bytes = int(declared.strip())
+                        except ValueError:
+                            raise ValueError(
+                                "upstream sent an unparseable Content-Length"
+                            ) from None
+                        if declared_bytes < 0:
+                            raise ValueError("upstream sent a negative Content-Length")
+                        if declared_bytes > max_bytes:
+                            raise ValueError(
+                                f"upstream response declares {declared_bytes} bytes, "
+                                f"over the {max_bytes} byte cap"
+                            )
+                    chunks: list[bytes] = []
+                    total = 0
+                    for chunk in response.iter_bytes(chunk_size=65536):
+                        if not chunk:
+                            continue
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise ValueError(
+                                f"upstream response of over {max_bytes} bytes "
+                                f"exceeds the {max_bytes} byte cap"
+                            )
+                        chunks.append(chunk)
+                    return b"".join(chunks)
+            except httpx.TransportError as exc:
+                last_error = exc
+                if attempt < MAX_ATTEMPTS - 1:
+                    time.sleep(BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)])
+                    continue
+                raise
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("request retry loop exited without a response")
+
     def close(self) -> None:
         """Close the underlying connection pool."""
         self._client.close()

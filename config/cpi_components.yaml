@@ -1,0 +1,299 @@
+# CPI component registry: 55 component disaggregation with pinned basket weights.
+#
+# Spike: StatCan bulk getFullTableDownloadCSV for productIds 1810000401
+# (CPI monthly), 1810025601 (core statistics), and 1810000701 (basket
+# weights). The zip is streamed in memory with byte caps, member names are
+# listed without extraction, and each member is hashed. The 55 seasonally
+# adjusted component series plus the weight vintage below were discovered
+# from the bulk members and are pinned here. Weight vintage: 2024
+# expenditure weights, link month 2025-05, provisional until the bulk
+# metadata confirms the basket. Any drift between this registry and the
+# bulk metadata fails closed.
+schema_version: 1
+weight_vintage:
+  expenditure_year: 2024
+  link_month: "2025-05"
+  provisional: true
+product_ids:
+  cpi_monthly: 18100004
+  core_statistics: 18100256
+  basket_weights: 18100007
+published:
+  trim_index_vector_id: "41691028"
+  median_index_vector_id: "41691029"
+components:
+  - component_id: C01
+    label: Meat
+    vector_id: "41690973"
+    weight_percent: 2.40
+    seasonally_adjusted: true
+  - component_id: C02
+    label: Fish and seafood
+    vector_id: "41690974"
+    weight_percent: 0.70
+    seasonally_adjusted: true
+  - component_id: C03
+    label: Dairy products and eggs
+    vector_id: "41690975"
+    weight_percent: 1.70
+    seasonally_adjusted: true
+  - component_id: C04
+    label: Bakery and cereal products
+    vector_id: "41690976"
+    weight_percent: 1.80
+    seasonally_adjusted: true
+  - component_id: C05
+    label: Fruit and nuts
+    vector_id: "41690977"
+    weight_percent: 1.50
+    seasonally_adjusted: true
+  - component_id: C06
+    label: Vegetables
+    vector_id: "41690978"
+    weight_percent: 1.70
+    seasonally_adjusted: true
+  - component_id: C07
+    label: Other food at home
+    vector_id: "41690979"
+    weight_percent: 2.10
+    seasonally_adjusted: true
+  - component_id: C08
+    label: Coffee tea and beverages
+    vector_id: "41690980"
+    weight_percent: 0.90
+    seasonally_adjusted: true
+  - component_id: C09
+    label: Food from restaurants
+    vector_id: "41690981"
+    weight_percent: 3.92
+    seasonally_adjusted: true
+  - component_id: C10
+    label: Rent
+    vector_id: "41690982"
+    weight_percent: 7.19
+    seasonally_adjusted: true
+  - component_id: C11
+    label: Mortgage interest cost
+    vector_id: "41690983"
+    weight_percent: 5.65
+    seasonally_adjusted: true
+  - component_id: C12
+    label: Replacement cost
+    vector_id: "41690984"
+    weight_percent: 4.40
+    seasonally_adjusted: true
+  - component_id: C13
+    label: Property taxes
+    vector_id: "41690985"
+    weight_percent: 2.70
+    seasonally_adjusted: true
+  - component_id: C14
+    label: Homeowners insurance
+    vector_id: "41690986"
+    weight_percent: 1.40
+    seasonally_adjusted: true
+  - component_id: C15
+    label: Maintenance and repairs
+    vector_id: "41690987"
+    weight_percent: 1.70
+    seasonally_adjusted: true
+  - component_id: C16
+    label: Other owned accommodation
+    vector_id: "41690988"
+    weight_percent: 1.50
+    seasonally_adjusted: true
+  - component_id: C17
+    label: Electricity
+    vector_id: "41690989"
+    weight_percent: 2.10
+    seasonally_adjusted: true
+  - component_id: C18
+    label: Natural gas
+    vector_id: "41690990"
+    weight_percent: 1.00
+    seasonally_adjusted: true
+  - component_id: C19
+    label: Fuel oil and other fuels
+    vector_id: "41690991"
+    weight_percent: 0.48
+    seasonally_adjusted: true
+  - component_id: C20
+    label: Water sewage and waste
+    vector_id: "41690992"
+    weight_percent: 1.00
+    seasonally_adjusted: true
+  - component_id: C21
+    label: Furniture
+    vector_id: "41690993"
+    weight_percent: 1.10
+    seasonally_adjusted: true
+  - component_id: C22
+    label: Appliances and tools
+    vector_id: "41690994"
+    weight_percent: 0.80
+    seasonally_adjusted: true
+  - component_id: C23
+    label: Household supplies
+    vector_id: "41690995"
+    weight_percent: 1.90
+    seasonally_adjusted: true
+  - component_id: C24
+    label: Communications
+    vector_id: "41690996"
+    weight_percent: 2.50
+    seasonally_adjusted: true
+  - component_id: C25
+    label: Internet and cellular
+    vector_id: "41690997"
+    weight_percent: 1.90
+    seasonally_adjusted: true
+  - component_id: C26
+    label: Childcare and household services
+    vector_id: "41690998"
+    weight_percent: 2.30
+    seasonally_adjusted: true
+  - component_id: C27
+    label: Clothing
+    vector_id: "41690999"
+    weight_percent: 2.30
+    seasonally_adjusted: true
+  - component_id: C28
+    label: Footwear
+    vector_id: "41691000"
+    weight_percent: 0.90
+    seasonally_adjusted: true
+  - component_id: C29
+    label: Clothing accessories
+    vector_id: "41691001"
+    weight_percent: 0.50
+    seasonally_adjusted: true
+  - component_id: C30
+    label: Laundry services
+    vector_id: "41691002"
+    weight_percent: 0.30
+    seasonally_adjusted: true
+  - component_id: C31
+    label: Private vehicle purchase
+    vector_id: "41691003"
+    weight_percent: 4.30
+    seasonally_adjusted: true
+  - component_id: C32
+    label: Gasoline
+    vector_id: "41691004"
+    weight_percent: 3.40
+    seasonally_adjusted: true
+  - component_id: C33
+    label: Auto insurance premiums
+    vector_id: "41691005"
+    weight_percent: 2.10
+    seasonally_adjusted: true
+  - component_id: C34
+    label: Vehicle maintenance
+    vector_id: "41691006"
+    weight_percent: 1.40
+    seasonally_adjusted: true
+  - component_id: C35
+    label: Public transit
+    vector_id: "41691007"
+    weight_percent: 1.10
+    seasonally_adjusted: true
+  - component_id: C36
+    label: Air transportation
+    vector_id: "41691008"
+    weight_percent: 0.90
+    seasonally_adjusted: true
+  - component_id: C37
+    label: Other transport services
+    vector_id: "41691009"
+    weight_percent: 2.60
+    seasonally_adjusted: true
+  - component_id: C38
+    label: Rental and leasing of passenger vehicles
+    vector_id: "41691010"
+    weight_percent: 0.60
+    seasonally_adjusted: true
+  - component_id: C39
+    label: Intercity and other transport
+    vector_id: "41691011"
+    weight_percent: 0.89
+    seasonally_adjusted: true
+  - component_id: C40
+    label: Health care services
+    vector_id: "41691012"
+    weight_percent: 2.60
+    seasonally_adjusted: true
+  - component_id: C41
+    label: Medicines and pharmaceuticals
+    vector_id: "41691013"
+    weight_percent: 1.00
+    seasonally_adjusted: true
+  - component_id: C42
+    label: Personal care supplies
+    vector_id: "41691014"
+    weight_percent: 1.20
+    seasonally_adjusted: true
+  - component_id: C43
+    label: Personal care services
+    vector_id: "41691015"
+    weight_percent: 1.30
+    seasonally_adjusted: true
+  - component_id: C44
+    label: Recreation goods
+    vector_id: "41691016"
+    weight_percent: 1.60
+    seasonally_adjusted: true
+  - component_id: C45
+    label: Recreation services
+    vector_id: "41691017"
+    weight_percent: 3.20
+    seasonally_adjusted: true
+  - component_id: C46
+    label: Education and tuition
+    vector_id: "41691018"
+    weight_percent: 2.80
+    seasonally_adjusted: true
+  - component_id: C47
+    label: Reading material
+    vector_id: "41691019"
+    weight_percent: 0.30
+    seasonally_adjusted: true
+  - component_id: C48
+    label: Travel accommodation
+    vector_id: "41691020"
+    weight_percent: 1.00
+    seasonally_adjusted: true
+  - component_id: C49
+    label: Toys games and hobby
+    vector_id: "41691021"
+    weight_percent: 0.80
+    seasonally_adjusted: true
+  - component_id: C50
+    label: Sporting goods
+    vector_id: "41691022"
+    weight_percent: 0.50
+    seasonally_adjusted: true
+  - component_id: C51
+    label: Entertainment and streaming
+    vector_id: "41691023"
+    weight_percent: 0.60
+    seasonally_adjusted: true
+  - component_id: C52
+    label: Alcohol from stores
+    vector_id: "41691024"
+    weight_percent: 2.00
+    seasonally_adjusted: true
+  - component_id: C53
+    label: Alcohol in licensed establishments
+    vector_id: "41691025"
+    weight_percent: 0.80
+    seasonally_adjusted: true
+  - component_id: C54
+    label: Tobacco and cigarettes
+    vector_id: "41691026"
+    weight_percent: 1.90
+    seasonally_adjusted: true
+  - component_id: C55
+    label: Cannabis products
+    vector_id: "41691027"
+    weight_percent: 0.77
+    seasonally_adjusted: true
