@@ -5,10 +5,24 @@ Fail closed: invalid quantities raise instead of returning partial data.
 
 from __future__ import annotations
 
+import re
 from typing import Literal, TypedDict
 
+from goc_rates.limits import MAX_SOURCE_ID_LENGTH
+
 Unit = Literal[
-    "percent", "basis_points", "index_points", "business_days", "price_units_per_100_face", "days"
+    "percent",
+    "basis_points",
+    "index_points",
+    "business_days",
+    "price_units_per_100_face",
+    "days",
+    "percent_yield",
+    "bp",
+    "bp_per_annum",
+    "duration_years",
+    "dv01_per_million",
+    "unitless_ratio",
 ]
 SourceId = str
 Quality = Literal["observed", "missing", "stale", "revised"]
@@ -25,6 +39,20 @@ class Quantity(TypedDict):
 
 _ALLOWED_QUALITIES: frozenset[str] = frozenset({"observed", "missing", "stale", "revised"})
 
+SOURCE_ID_PATTERN = re.compile(r"^(derived|valet|fred|statcan):[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+
+def validate_source_id(source_id: str) -> str:
+    """Validate a source identifier against the closed grammar."""
+    if not isinstance(source_id, str):
+        raise ValueError("source_id must be a string")
+    if len(source_id) > MAX_SOURCE_ID_LENGTH:
+        raise ValueError(f"source_id exceeds {MAX_SOURCE_ID_LENGTH} characters")
+    if not SOURCE_ID_PATTERN.match(source_id):
+        raise ValueError(f"source_id uses an unknown grammar: {source_id!r}")
+    return source_id
+
+
 ALLOWED_UNITS: frozenset[str] = frozenset(
     {
         "percent",
@@ -33,6 +61,12 @@ ALLOWED_UNITS: frozenset[str] = frozenset(
         "business_days",
         "price_units_per_100_face",
         "days",
+        "percent_yield",
+        "bp",
+        "bp_per_annum",
+        "duration_years",
+        "dv01_per_million",
+        "unitless_ratio",
     }
 )
 
@@ -76,8 +110,9 @@ def validate_quantity(quantity: Quantity) -> None:
         raise ValueError(f"quantity unit is not in the closed unit set: {unit!r}")
     if quality not in _ALLOWED_QUALITIES:
         raise ValueError(f"quantity quality is not allowed: {quality!r}")
-    if not isinstance(source_id, str) or not source_id.strip():
-        raise ValueError("quantity source_id must be a non empty string")
+    if not isinstance(source_id, str):
+        raise ValueError("quantity source_id must be a string")
+    validate_source_id(source_id)
     if quality == "missing":
         if value is not None:
             raise ValueError("missing quantity must have value None")
@@ -95,6 +130,13 @@ def validate_quantity(quantity: Quantity) -> None:
 
 def to_basis_points(percent_value: float, unit: Unit) -> float:
     """Convert a percent value to basis points, validating the unit label."""
-    if unit.strip().lower() not in ("percent", "pct", "%"):
+    if not isinstance(unit, str):
         raise ValueError(f"expected a percent unit, got: {unit!r}")
-    return percent_value * 100.0
+    if unit.strip() not in ("percent", "percent_yield"):
+        raise ValueError(f"expected a percent unit, got: {unit!r}")
+    if not isinstance(percent_value, (int, float)) or isinstance(percent_value, bool):
+        raise ValueError("percent_value must be numeric")
+    result = float(percent_value)
+    if result != result or result in (float("inf"), float("-inf")):
+        raise ValueError("percent_value must be finite")
+    return result * 100.0

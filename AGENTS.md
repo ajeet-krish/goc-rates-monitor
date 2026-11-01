@@ -37,8 +37,8 @@ Keep functions small and pure where practical.
 
 | Phase | Description | Status |
 | Phase 1 | Foundation clients calendar snapshot verify | Complete |
-| Phase 2 | Curve engine par approx slopes carry spreads | In Progress |
-| Phase 3 | Site shell curve funding verification pages | Planned |
+| Phase 2 | Curve engine par approx slopes carry spreads | Complete |
+| Phase 3 | Site shell curve funding verification pages | In Progress |
 | Phase 4 | CPI engine trim median validation | Planned |
 | Phase 5 | Inflation breaks verification methods polish | Planned |
 | Phase 6 | True bootstrap with benchmark map post launch | Planned |

@@ -1,4 +1,4 @@
-"""Verification checks V01 to V12 with a 1.0 basis point tolerance."""
+"""Verification checks V01 to V18 with a 1.0 basis point tolerance."""
 
 from __future__ import annotations
 
@@ -9,11 +9,39 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from goc_rates.models import ALLOWED_UNITS
+from goc_rates.curve import (
+    CURVE_METHOD,
+    Curve,
+    CurveKnot,
+    bill_price_from_yield,
+    build_par_curve,
+    discount_factor,
+    reprice_par_yield_bp,
+    zero_yield,
+)
+from goc_rates.dates import parse_strict_iso_date
+from goc_rates.limits import MAX_BACKTEST_OBS, MAX_QUANTITIES, MAX_SPREAD_RECORDS
+from goc_rates.models import ALLOWED_UNITS, validate_source_id
 from goc_rates.snapshot import MAX_SNAPSHOT_BYTES, atomic_write_text, canonical_dumps
 
 TOLERANCE_BP = 1.0
 MIN_SECRET_KEY_SCAN_LENGTH = 4
+
+__all__ = [
+    "TOLERANCE_BP",
+    "CheckResult",
+    "bill_price_from_yield",
+    "tbill_price_from_yield",
+    "run_checks",
+    "summarize",
+    "verify_snapshot",
+    "verify_file",
+]
+
+
+def tbill_price_from_yield(yield_percent: float, days_to_maturity: int) -> float:
+    """Legacy verify entry point, delegated to the curve engine."""
+    return bill_price_from_yield(yield_percent, days_to_maturity)
 
 
 @dataclass(frozen=True)
@@ -36,13 +64,37 @@ def _get_path(payload: dict[str, Any], *keys: str) -> Any:
 
 
 def _parse_date(text: Any) -> dt.date | None:
-    """Parse a YYYY-MM-DD date string, returning None on failure."""
-    if not isinstance(text, str) or not text.strip():
+    """Parse an exact YYYY-MM-DD date string, returning None on failure."""
+    if not isinstance(text, str):
         return None
     try:
-        return dt.date.fromisoformat(text.strip())
+        return parse_strict_iso_date(text)
     except ValueError:
         return None
+
+
+def _require_float(value: Any, name: str) -> float:
+    """Require a finite int or float without string coercion."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be numeric without string coercion")
+    result = float(value)
+    if result != result or result in (float("inf"), float("-inf")):
+        raise ValueError(f"{name} must be finite")
+    return result
+
+
+def _require_int(value: Any, name: str) -> int:
+    """Require an int without string coercion."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an int without string coercion")
+    return value
+
+
+def _require_str(value: Any, name: str) -> str:
+    """Require a non empty string without coercion."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} must be a non empty string")
+    return value
 
 
 def _manifest_digest(manifest: Any) -> str | None:
@@ -105,7 +157,7 @@ def run_checks(
     expected_labels: dict[str, str] | None = None,
     fred_api_key: str | None = None,
 ) -> list[CheckResult]:
-    """Run checks V01 to V12 against a snapshot document."""
+    """Run checks V01 to V18 against a snapshot document."""
     results: list[CheckResult] = []
     metadata = snapshot.get("metadata")
     observations = snapshot.get("observations")
@@ -185,10 +237,13 @@ def run_checks(
         tbill.keys()
     ):
         try:
+            if len(_quantities(snapshot.get("observations"))) > MAX_QUANTITIES:
+                raise ValueError("quantity count exceeds the cap before recompute")
             recovered = tbill_price_from_yield(
-                float(str(tbill["yield_percent"])), int(str(tbill["days_to_maturity"]))
+                _require_float(tbill["yield_percent"], "yield_percent"),
+                _require_int(tbill["days_to_maturity"], "days_to_maturity"),
             )
-            diff_bp = abs(recovered - float(str(tbill["price"]))) * 100.0
+            diff_bp = abs(recovered - _require_float(tbill["price"], "price")) * 100.0
             results.append(
                 CheckResult(
                     "V05",
@@ -196,7 +251,7 @@ def run_checks(
                     f"T-bill price inversion diff {diff_bp:.4f} bp (unit: bp)",
                 )
             )
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, ArithmeticError) as exc:
             results.append(CheckResult("V05", False, f"T-bill check failed: {exc}"))
     else:
         results.append(CheckResult("V05", False, "tbill_check section is missing"))
@@ -302,7 +357,7 @@ def run_checks(
                     )
                 )
             else:
-                diff = abs(float(str(cross["value_bp"])))
+                diff = abs(_require_float(cross["value_bp"], "value_bp"))
                 results.append(
                     CheckResult(
                         "V11",
@@ -310,7 +365,7 @@ def run_checks(
                         f"cross source diff {diff:.4f} bp within {tolerance_bp} bp (unit: bp)",
                     )
                 )
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, ArithmeticError):
             results.append(CheckResult("V11", False, "cross_source_diff_bp is not numeric"))
     else:
         results.append(CheckResult("V11", False, "cross_source_diff_bp section is missing"))
@@ -318,30 +373,385 @@ def run_checks(
     staleness = _get_path(snapshot, "observations", "staleness")
     if isinstance(staleness, dict) and "max_age_business_days" in staleness:
         try:
-            age = int(str(staleness["max_age_business_days"]))
+            age = _require_int(staleness["max_age_business_days"], "max_age_business_days")
             unit_ok = str(staleness.get("unit", "")).strip() == "business_days"
             passed = 0 <= age <= 5 and unit_ok
             detail = f"max age {age} business days (unit: business_days)"
             if not unit_ok:
                 detail = f"staleness unit must be business_days, got {staleness.get('unit')!r}"
             results.append(CheckResult("V12", passed, detail))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, ArithmeticError):
             results.append(CheckResult("V12", False, "staleness age is not an integer"))
     else:
         results.append(CheckResult("V12", False, "staleness section is missing"))
 
+    results.extend(_run_phase2_checks(snapshot, tolerance_bp))
+
     return results
 
 
-def tbill_price_from_yield(yield_percent: float, days_to_maturity: int) -> float:
-    """Recover the add-on price P = F / (1 + Y * t / 365) with F = 100.
+def _curve_section(snapshot: dict[str, Any]) -> Any:
+    """Return the curve section dict or None."""
+    return _get_path(snapshot, "observations", "curve")
 
-    Returns price in price_units_per_100_face. Used as a verify cross-check.
+
+def _derived_quantities(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect Quantity dicts under curve, derived, spreads, risk, backtest."""
+    observations = snapshot.get("observations")
+    if not isinstance(observations, dict):
+        return []
+    collected: list[dict[str, Any]] = []
+    for key in ("curve", "derived", "spreads", "canada_us_spreads", "carry", "risk", "backtest"):
+        section = observations.get(key)
+        if isinstance(section, (dict, list)):
+            collected.extend(_quantities(section))
+    return collected
+
+
+def _spread_records(snapshot: dict[str, Any]) -> list[Any] | None:
+    """Return raw spread records from any known section, else None.
+
+    Records are returned unfiltered so the V16 check can fail closed on
+    non-dict entries or an empty set instead of passing vacuously.
     """
-    if days_to_maturity <= 0:
-        raise ValueError("days_to_maturity must be positive")
-    rate = yield_percent / 100.0
-    return 100.0 / (1.0 + rate * float(days_to_maturity) / 365.0)
+    observations = snapshot.get("observations")
+    if not isinstance(observations, dict):
+        return None
+    candidates: list[Any] = []
+    for key in ("spreads", "canada_us_spreads"):
+        section = observations.get(key)
+        if isinstance(section, list):
+            candidates = section
+            break
+        if isinstance(section, dict) and isinstance(section.get("records"), list):
+            candidates = section["records"]
+            break
+    if not candidates:
+        derived = observations.get("derived")
+        if isinstance(derived, dict):
+            for key in ("spreads", "canada_us_spreads"):
+                section = derived.get(key)
+                if isinstance(section, list):
+                    candidates = section
+                    break
+                if isinstance(section, dict) and isinstance(section.get("records"), list):
+                    candidates = section["records"]
+                    break
+    if not candidates:
+        return None
+    return candidates
+
+
+def _carry_section(snapshot: dict[str, Any]) -> Any:
+    """Return the carry section dict or None."""
+    carry = _get_path(snapshot, "observations", "carry")
+    if isinstance(carry, dict):
+        return carry
+    return _get_path(snapshot, "observations", "derived", "carry")
+
+
+def _risk_section(snapshot: dict[str, Any]) -> Any:
+    """Return the risk section dict or None."""
+    return _get_path(snapshot, "observations", "risk")
+
+
+def _backtest_section(snapshot: dict[str, Any]) -> Any:
+    """Return the backtest section dict or None."""
+    return _get_path(snapshot, "observations", "backtest")
+
+
+def _run_phase2_checks(snapshot: dict[str, Any], tolerance_bp: float) -> list[CheckResult]:
+    """Run checks V13 to V18 for the Phase 2 curve engine."""
+    from goc_rates.analytics import canada_us_spread_bp, carry_roll_bp
+    from goc_rates.backtest import BACKTEST_RULE, run_backtest
+    from goc_rates.risk import dv01_per_million, modified_duration, par_bond_price
+
+    results: list[CheckResult] = []
+
+    curve_section = _curve_section(snapshot)
+    curve: Curve | None = None
+    if not isinstance(curve_section, dict):
+        results.append(CheckResult("V13", False, "curve section is missing"))
+        results.append(CheckResult("V14", False, "curve section is missing"))
+        results.append(CheckResult("V15", False, "derived curve quantities are missing"))
+    else:
+        try:
+            if curve_section.get("method") != CURVE_METHOD:
+                raise ValueError(f"curve method must be {CURVE_METHOD}")
+            if curve_section.get("is_par_approx") is not True:
+                raise ValueError("curve is_par_approx must be true")
+            if curve_section.get("is_zero") is not False:
+                raise ValueError("curve is_zero must be false")
+            knots_raw = curve_section.get("knots")
+            if not isinstance(knots_raw, list) or not knots_raw:
+                raise ValueError("curve knots are missing")
+            if len(knots_raw) > MAX_QUANTITIES:
+                raise ValueError("knot count exceeds the cap before recompute")
+            knots: list[CurveKnot] = []
+            for row in knots_raw:
+                if not isinstance(row, dict):
+                    raise ValueError("curve knot rows must be mappings")
+                label_raw = row.get("tenor", "")
+                if not isinstance(label_raw, str) or not label_raw.strip():
+                    raise ValueError("curve knot tenor is missing")
+                label = label_raw.strip()
+                tenor_years = _require_float(row.get("tenor_years", ""), "tenor_years")
+                yield_percent = _require_float(row.get("yield_percent", ""), "yield_percent")
+                knots.append(
+                    CurveKnot(
+                        tenor_label=label, tenor_years=tenor_years, yield_percent=yield_percent
+                    )
+                )
+            curve = build_par_curve(knots)
+            labels = [knot.tenor_label for knot in curve.knots]
+            if labels != ["2Y", "5Y", "10Y", "30Y"]:
+                raise ValueError(f"curve tenor set must be 2Y 5Y 10Y 30Y, got {labels}")
+            worst = 0.0
+            for knot in curve.knots:
+                error = abs(reprice_par_yield_bp(curve, knot.tenor_years))
+                worst = max(worst, error)
+            stored_rows = knots_raw
+            assert isinstance(stored_rows, list)
+            for row, knot in zip(stored_rows, curve.knots, strict=False):
+                assert isinstance(row, dict)
+                stored_discount = _require_float(row.get("discount", ""), "discount")
+                recomputed = discount_factor(curve, knot.tenor_years)
+                if stored_discount <= 0.0:
+                    raise ValueError("stored discount must be positive")
+                yield_error_bp = (
+                    abs(zero_yield(curve, knot.tenor_years) - knot.yield_percent) * 100.0
+                )
+                discount_implied_bp = abs(recomputed - stored_discount) / stored_discount * 10000.0
+                worst = max(worst, yield_error_bp, discount_implied_bp)
+            stored_discounts = curve_section.get("discounts")
+            stored_zeros = curve_section.get("zero_yields")
+            if not isinstance(stored_discounts, dict) or not isinstance(stored_zeros, dict):
+                raise ValueError("stored discounts and zero_yields mappings are missing")
+            for label in ("2Y", "5Y", "10Y", "30Y"):
+                knot = next(item for item in curve.knots if item.tenor_label == label)
+                discount_entry = stored_discounts.get(label)
+                zero_entry = stored_zeros.get(label)
+                if not isinstance(discount_entry, dict) or not isinstance(zero_entry, dict):
+                    raise ValueError(f"stored mapping for {label} must be a Quantity")
+                stored_d = _require_float(discount_entry.get("value", ""), "discount value")
+                stored_z = _require_float(zero_entry.get("value", ""), "zero value")
+                recomputed_d = discount_factor(curve, knot.tenor_years)
+                recomputed_z = zero_yield(curve, knot.tenor_years)
+                if stored_d <= 0.0:
+                    raise ValueError(f"stored discount for {label} must be positive")
+                discount_bp = abs(recomputed_d - stored_d) / stored_d * 10000.0
+                zero_bp = abs(recomputed_z - stored_z) * 100.0
+                worst = max(worst, discount_bp, zero_bp)
+            results.append(
+                CheckResult(
+                    "V13",
+                    worst <= tolerance_bp,
+                    f"curve reprice worst {worst:.4f} bp within {tolerance_bp} bp (unit: bp)",
+                )
+            )
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            results.append(CheckResult("V13", False, f"curve reprice failed: {exc}"))
+            curve = None
+        try:
+            knots_raw = curve_section.get("knots")
+            if not isinstance(knots_raw, list) or not knots_raw:
+                raise ValueError("curve knots are missing")
+            if len(knots_raw) > MAX_QUANTITIES:
+                raise ValueError("knot count exceeds the cap before recompute")
+            tenors: list[float] = []
+            discounts: list[float] = []
+            for row in knots_raw:
+                if not isinstance(row, dict):
+                    raise ValueError("curve knot rows must be mappings")
+                tenors.append(_require_float(row.get("tenor_years", ""), "tenor_years"))
+                discounts.append(_require_float(row.get("discount", ""), "discount"))
+            in_range = all(0.0 < item <= 1.0 for item in discounts)
+            increasing = all(
+                second > first for first, second in zip(tenors, tenors[1:], strict=False)
+            )
+            decreasing = all(
+                first > second for first, second in zip(discounts, discounts[1:], strict=False)
+            )
+            passed = in_range and increasing and decreasing and len(tenors) >= 3
+            detail = (
+                "discounts in (0, 1] and strictly decreasing "
+                "with increasing tenors (unit: unitless_ratio)"
+            )
+            if not passed:
+                detail = "discount monotonicity or range failed (unit: unitless_ratio)"
+            results.append(CheckResult("V14", passed, detail))
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            results.append(CheckResult("V14", False, f"discount check failed: {exc}"))
+        try:
+            derived = _derived_quantities(snapshot)
+            if len(derived) > MAX_QUANTITIES:
+                raise ValueError("derived quantity count exceeds the cap before recompute")
+            if not derived:
+                raise ValueError("no derived quantities found")
+            bad_units = [
+                item for item in derived if str(item.get("unit", "")).strip() not in ALLOWED_UNITS
+            ]
+            bad_source: list[Any] = []
+            for item in derived:
+                source = item.get("source_id", "")
+                try:
+                    validate_source_id(source)
+                except ValueError:
+                    bad_source.append(item)
+                    continue
+                if not str(source).startswith("derived:"):
+                    bad_source.append(item)
+            if bad_units or bad_source:
+                raise ValueError(f"{len(bad_units)} bad units, {len(bad_source)} bad sources")
+            results.append(
+                CheckResult(
+                    "V15",
+                    True,
+                    f"all {len(derived)} derived quantities carry units "
+                    "and a derived source (unit: mixed)",
+                )
+            )
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            results.append(CheckResult("V15", False, f"derived check failed: {exc}"))
+
+    records = _spread_records(snapshot)
+    if records is None:
+        results.append(CheckResult("V16", False, "spread records section is missing"))
+    else:
+        try:
+            if len(records) > MAX_SPREAD_RECORDS:
+                raise ValueError("spread record count exceeds the cap before recompute")
+            worst = 0.0
+            for record in records:
+                if not isinstance(record, dict):
+                    raise ValueError("spread records must be mappings, no filtering")
+                if "ca_date" not in record or "us_date" not in record:
+                    raise ValueError("spread legs must carry explicit ca_date and us_date")
+                ca_yield = _require_float(record.get("ca_yield_percent", ""), "ca_yield")
+                us_yield = _require_float(record.get("us_yield_percent", ""), "us_yield")
+                stored = _require_float(record.get("spread_bp", ""), "spread_bp")
+                expected = canada_us_spread_bp(ca_yield, us_yield)
+                worst = max(worst, abs(expected - stored))
+                record_date = _parse_date(record.get("date"))
+                if record_date is None:
+                    raise ValueError("spread record date is unparseable")
+                ca_date = _parse_date(record.get("ca_date"))
+                us_date = _parse_date(record.get("us_date"))
+                if ca_date != record_date or us_date != record_date:
+                    raise ValueError("spread legs must share the record date")
+            results.append(
+                CheckResult(
+                    "V16",
+                    worst <= tolerance_bp,
+                    f"spreads recompute worst {worst:.4f} bp "
+                    f"within {tolerance_bp} bp on same dates (unit: bp)",
+                )
+            )
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            results.append(CheckResult("V16", False, f"spread recompute failed: {exc}"))
+
+    carry = _carry_section(snapshot)
+    risk = _risk_section(snapshot)
+    if not isinstance(carry, dict) or not isinstance(risk, dict):
+        results.append(CheckResult("V17", False, "carry or risk section is missing"))
+    else:
+        try:
+            long_yield = _require_float(
+                carry.get("yield_at_maturity_percent", ""), "yield_at_maturity"
+            )
+            rolled = _require_float(
+                carry.get("yield_at_rolled_tenor_percent", ""), "yield_at_rolled"
+            )
+            horizon = _require_float(carry.get("horizon_years", ""), "horizon_years")
+            stored_carry = _require_float(carry.get("carry_roll_bp", ""), "carry_roll_bp")
+            expected_carry = carry_roll_bp(long_yield, rolled, horizon)
+            carry_diff = abs(expected_carry - stored_carry)
+            risk_yield = _require_float(risk.get("yield_percent", ""), "yield_percent")
+            risk_tenor = _require_float(risk.get("tenor_years", ""), "tenor_years")
+            stored_price = _require_float(risk.get("price", ""), "price")
+            stored_duration = _require_float(
+                risk.get("modified_duration_years", ""), "modified_duration"
+            )
+            stored_dv01 = _require_float(risk.get("dv01_per_million", ""), "dv01")
+            expected_price = par_bond_price(risk_yield, risk_tenor)
+            expected_duration = modified_duration(risk_yield, risk_tenor)
+            expected_dv01 = dv01_per_million(expected_price, expected_duration)
+            # Tolerances below are not in basis points: price in price units
+            # per 100 face (0.01), duration in years (0.0001), and DV01 in
+            # currency units per million (1.0). Only the carry leg uses the
+            # shared tolerance_bp of 1.0 bp.
+            price_ok = abs(expected_price - stored_price) <= 0.01
+            duration_ok = abs(expected_duration - stored_duration) <= 0.0001
+            dv01_ok = abs(expected_dv01 - stored_dv01) <= 1.0
+            carry_ok = carry_diff <= tolerance_bp
+            passed = price_ok and duration_ok and dv01_ok and carry_ok
+            results.append(
+                CheckResult(
+                    "V17",
+                    passed,
+                    f"carry diff {carry_diff:.4f} bp within {tolerance_bp} bp; "
+                    f"price tol 0.01 per 100, duration tol 0.0001 years, "
+                    f"DV01 tol 1.0 per million "
+                    f"(price {expected_price:.4f}, duration {expected_duration:.4f} "
+                    f"years, DV01 {expected_dv01:.2f} per million; unit: mixed)",
+                )
+            )
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            results.append(CheckResult("V17", False, f"carry risk recompute failed: {exc}"))
+
+    backtest = _backtest_section(snapshot)
+    if not isinstance(backtest, dict):
+        results.append(CheckResult("V18", False, "backtest section is missing"))
+    else:
+        try:
+            rule_raw = backtest.get("rule", "")
+            if not isinstance(rule_raw, str):
+                raise ValueError("backtest rule must be a string without coercion")
+            rule = rule_raw
+            dates = backtest.get("dates")
+            slopes = backtest.get("slopes_bp")
+            stored_raw = backtest.get("total_pnl_bp", "")
+            stored_total = _require_float(stored_raw, "total_pnl_bp")
+            if rule != BACKTEST_RULE:
+                raise ValueError(f"backtest rule must be {BACKTEST_RULE}")
+            if not isinstance(dates, list) or not isinstance(slopes, list):
+                raise ValueError("backtest dates and slopes_bp must be lists")
+            if len(dates) > MAX_BACKTEST_OBS or len(slopes) > MAX_BACKTEST_OBS:
+                raise ValueError("backtest count exceeds the cap before recompute")
+            if len(dates) < 254 or len(slopes) < 254:
+                raise ValueError("backtest needs at least 254 joined observations")
+            if len(dates) != len(slopes):
+                raise ValueError("backtest dates and slopes_bp must have equal length")
+            for item in dates:
+                if not isinstance(item, str):
+                    raise ValueError("backtest dates must be strings without coercion")
+                parse_strict_iso_date(item)
+            clean_slopes: list[float] = []
+            for item in slopes:
+                clean_slopes.append(_require_float(item, "slopes_bp"))
+            recomputed_backtest = run_backtest(list(dates), clean_slopes)
+            recomputed_raw = recomputed_backtest["total_pnl_bp"]
+            if isinstance(recomputed_raw, bool) or not isinstance(recomputed_raw, (int, float)):
+                raise ValueError("recomputed total_pnl_bp must be numeric")
+            recomputed_value = float(recomputed_raw)
+            if recomputed_value != recomputed_value or recomputed_value in (
+                float("inf"),
+                float("-inf"),
+            ):
+                raise ValueError("recomputed total_pnl_bp must be finite")
+            expected_total = recomputed_value
+            diff = abs(expected_total - stored_total)
+            results.append(
+                CheckResult(
+                    "V18",
+                    diff <= tolerance_bp,
+                    f"backtest {rule} with {len(dates)} obs, "
+                    f"next day recompute diff {diff:.4f} bp (unit: bp)",
+                )
+            )
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            results.append(CheckResult("V18", False, f"backtest check failed: {exc}"))
+    return results
 
 
 def summarize(results: list[CheckResult], tolerance_bp: float = TOLERANCE_BP) -> dict[str, Any]:

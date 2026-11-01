@@ -1,9 +1,14 @@
-"""Verification tests: V01 to V12 checks with a 1.0 basis point tolerance."""
+"""Verification tests: V01 to V18 checks with a 1.0 basis point tolerance."""
 
+import datetime as dt
 import json
 from pathlib import Path
 from typing import Any
 
+from goc_rates.backtest import BACKTEST_RULE, run_backtest
+from goc_rates.curve import build_curve_section
+from goc_rates.models import make_quantity
+from goc_rates.risk import dv01_per_million, modified_duration, par_bond_price
 from goc_rates.verify import (
     TOLERANCE_BP,
     tbill_price_from_yield,
@@ -14,6 +19,21 @@ from goc_rates.verify import (
 
 def _passing_snapshot() -> dict[str, Any]:
     price = tbill_price_from_yield(4.0, 90)
+    curve = build_curve_section(
+        {
+            "2Y": make_quantity(3.32, "percent", "observed", "valet:BD.CDN.2YR.DQ.YLD"),
+            "5Y": make_quantity(3.62, "percent", "observed", "valet:BD.CDN.5YR.DQ.YLD"),
+            "10Y": make_quantity(3.9, "percent", "observed", "valet:BD.CDN.10YR.DQ.YLD"),
+            "30Y": make_quantity(4.19, "percent", "observed", "valet:BD.CDN.LONG.DQ.YLD"),
+        }
+    )
+    risk_price = par_bond_price(3.0, 5.0)
+    risk_duration = modified_duration(3.0, 5.0)
+    risk_dv01 = dv01_per_million(risk_price, risk_duration)
+    base = dt.date(2025, 1, 6)
+    dates = [(base + dt.timedelta(days=i)).isoformat() for i in range(260)]
+    slopes = [100.0 + float(i % 5) for i in range(260)]
+    backtest = run_backtest(dates, slopes)
     return {
         "metadata": {"snapshot_date": "2026-10-30", "schema_version": 1},
         "observations": {
@@ -41,6 +61,36 @@ def _passing_snapshot() -> dict[str, Any]:
             "statcan": {"seasonally_adjusted_reused_as_is": True, "vectors": {}},
             "cross_source_diff_bp": {"value_bp": 0.5, "unit": "basis_points"},
             "staleness": {"max_age_business_days": 1, "unit": "business_days"},
+            "curve": curve,
+            "spreads": [
+                {
+                    "date": "2026-10-30",
+                    "ca_date": "2026-10-30",
+                    "us_date": "2026-10-30",
+                    "ca_yield_percent": 3.5,
+                    "us_yield_percent": 3.0,
+                    "spread_bp": 50.0,
+                }
+            ],
+            "carry": {
+                "yield_at_maturity_percent": 3.0,
+                "yield_at_rolled_tenor_percent": 3.0,
+                "horizon_years": 0.25,
+                "carry_roll_bp": 75.0,
+            },
+            "risk": {
+                "yield_percent": 3.0,
+                "tenor_years": 5.0,
+                "price": risk_price,
+                "modified_duration_years": risk_duration,
+                "dv01_per_million": risk_dv01,
+            },
+            "backtest": {
+                "rule": BACKTEST_RULE,
+                "dates": dates,
+                "slopes_bp": slopes,
+                "total_pnl_bp": float(str(backtest["total_pnl_bp"])),
+            },
         },
         "provenance": {
             "valet": {
@@ -63,11 +113,11 @@ def test_tbill_price_inversion_matches_formula() -> None:
     assert tbill_price_from_yield(4.0, 365) == 100.0 / 1.04
 
 
-def test_passing_snapshot_passes_all_twelve_checks() -> None:
-    """A complete snapshot passes V01 to V12."""
+def test_passing_snapshot_passes_all_eighteen_checks() -> None:
+    """A complete snapshot passes V01 to V18."""
     report = verify_snapshot(_passing_snapshot())
     assert report["passed"] is True
-    assert len(report["checks"]) == 12
+    assert len(report["checks"]) == 18
     assert report["failed_count"] == 0
     assert report["tolerance_unit"] == "basis_points"
 
@@ -84,6 +134,40 @@ def test_failing_snapshot_reports_failures() -> None:
     assert report["passed"] is False
     failed_ids = [item["id"] for item in report["checks"] if not item["passed"]]
     assert "V11" in failed_ids
+
+
+def test_v13_fails_on_reprice_drift() -> None:
+    """A curve knot edited after pricing fails V13."""
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    curve = observations["curve"]
+    assert isinstance(curve, dict)
+    knots = curve["knots"]
+    assert isinstance(knots, list)
+    first = knots[0]
+    assert isinstance(first, dict)
+    first["yield_percent"] = float(first["yield_percent"]) + 0.05
+    report = verify_snapshot(snapshot)
+    failed_ids = [item["id"] for item in report["checks"] if not item["passed"]]
+    assert "V13" in failed_ids
+
+
+def test_v18_fails_on_short_backtest() -> None:
+    """A backtest with fewer than 253 observations fails V18."""
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    backtest = observations["backtest"]
+    assert isinstance(backtest, dict)
+    dates = backtest["dates"]
+    slopes = backtest["slopes_bp"]
+    assert isinstance(dates, list) and isinstance(slopes, list)
+    backtest["dates"] = dates[:100]
+    backtest["slopes_bp"] = slopes[:100]
+    report = verify_snapshot(snapshot)
+    failed_ids = [item["id"] for item in report["checks"] if not item["passed"]]
+    assert "V18" in failed_ids
 
 
 def test_verify_file_writes_verify_json_with_exit_code(tmp_path: Path) -> None:

@@ -258,9 +258,7 @@ def test_valet_id_with_slash_rejected() -> None:
 def test_oversize_declared_content_length_capped() -> None:
     """A declared Content-Length over the cap fails closed."""
     big = MAX_RESPONSE_BYTES + 1
-    response = httpx.Response(
-        200, headers={"content-length": str(big)}, content=b'{"ok": true}'
-    )
+    response = httpx.Response(200, headers={"content-length": str(big)}, content=b'{"ok": true}')
     with pytest.raises(ValueError, match="cap"):
         parse_json_capped(response)
 

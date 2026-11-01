@@ -1,11 +1,13 @@
 # goc-rates-monitor Architecture
 
-Last updated: 2026-11-01 (Phase 1)
+Last updated: 2026-11-01 (Phase 2)
 
 ## Purpose
 
 Static rate dashboard plus Python pipeline. BoC Valet, FRED, and StatCan WDS
-feed one daily snapshot that GitHub Pages publishes as JSON.
+feed one daily snapshot that GitHub Pages publishes as JSON. Phase 2 adds a
+par approx curve engine with slopes, carry, spreads, risk, and a fixed
+backtest illustration.
 
 ## Pipeline
 
@@ -24,7 +26,13 @@ Package layout (`src/goc_rates`):
 | `clients/fred.py` | DGS fetch, key from env, missing key yields missing quality |
 | `clients/statcan.py` | WDS vectors fetch, SA values reused as published |
 | `snapshot.py` | Canonical JSON, atomic write, manifest sha256, raw retention |
-| `verify.py` | V01 to V12 checks at 1.0 bp tolerance, verify.json, exit code |
+| `verify.py` | V01 to V18 checks at 1.0 bp tolerance, verify.json, exit code |
+| `curve.py` | Par approx curve on semiannual log discounts, bills, knots |
+| `analytics.py` | Slopes, butterfly, z, carry roll, CA-US spreads, joins |
+| `risk.py` | Par price, modified duration, DV01 per million, semiannual |
+| `backtest.py` | Fixed 2s10s mean reversion sketch, next day, DV01 neutral |
+| `limits.py` | Central numeric and size caps shared by Phase 2 math |
+| `dates.py` | Strict ISO date parsing plus monotonic history validation |
 
 ## Data sources
 
@@ -40,6 +48,15 @@ bond calendar. Joint business days need both legs open. CORRA value dates lag
 publication by one business day, so snapshots store value date, pub date,
 and a date role flag.
 
+## Curve engine
+
+Method `par_approx_semiannual_log_discount_v1` treats benchmark YTM inputs
+as par approximations. Knot discounts use `D = 1 / (1 + y / 2) ^ (2 * T)`.
+Between knots log discounts interpolate linearly. Ends hold the nearest
+knot yield flat. Long is a 30Y proxy and is labelled as such. Minimum three
+knots on a half year grid, else fail closed. Bill math uses ACT/365 add on:
+`P = F / (1 + Y * t / 365)` with explicit days and face.
+
 ## Snapshot format
 
 `snapshot.json` holds metadata, observations, provenance, and warnings.
@@ -47,12 +64,26 @@ and a date role flag.
 sorted keys, indent 2, UTF-8, LF ending, strict floats. Every numeric field
 carries a unit. Snapshots are committed to git. Only raw cache is pruned.
 
+Phase 2 observations add `curve` (method, knots, discounts, zero yields),
+`spreads` (same date CA-US records), `carry` (yield, rolled yield,
+horizon, carry in bp), `risk` (yield, tenor, price, duration, DV01), and
+`backtest` (rule, dates, slopes, total PnL). Derived quantities use units
+`percent_yield`, `bp`, `bp_per_annum`, `duration_years`,
+`dv01_per_million`, and `unitless_ratio` with a `derived:` source.
+
 ## Verification
 
-Twelve checks (V01 to V12) cover canonical form, units, labels, T-bill price
-inversion, CORRA roles, FRED lag, StatCan reuse, vintage markers, manifest
-match, cross source tolerance, and staleness. Tolerance is 1.0 basis point.
-Any failure blocks the build (fail closed).
+Eighteen checks (V01 to V18) cover canonical form, units, labels, T-bill
+price inversion, CORRA roles, FRED lag, StatCan reuse, vintage markers,
+manifest match, cross source tolerance, staleness, curve reprice, discount
+range and monotonicity, derived units and sources, spread recomputation,
+carry and DV01 recomputation, and backtest rule plus count plus next day
+recomputation. Tolerance is 1.0 basis point. Any failure blocks the build.
+Verify checks caps before recompute, catches arithmetic overflow as a check
+failure, validates derived sources against the closed grammar, and validates
+backtest dates and slopes without string coercion. Math modules enforce the
+shared limits on yields, tenors, periods, knots, bills, horizons, slopes,
+and history sizes, with strict ISO dates throughout.
 
 ## Config
 
@@ -62,5 +93,5 @@ with Valet BD.CDN ids, FRED DGS comparators, and nullable legacy V codes.
 
 ## Scheduling
 
-One daily workflow run after North American close. Future phases add charts
-(Phase 2) and alerts plus backfill (Phase 3).
+One daily workflow run after North American close. Phase 2 adds curve
+charts. Later phases add alerts plus backfill.

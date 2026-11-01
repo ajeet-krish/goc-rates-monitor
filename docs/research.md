@@ -83,3 +83,85 @@ tables 18-10-0004 plus 0256 plus 0259 plus 0007 and weight vintage.
 - [x] Practical implications are actionable
 - [x] All sources cited
 - [x] Research supports phase architecture decisions
+
+## 2026-11-01 - Phase 2 Curve engine: bills, par approx, slopes, z, carry, CA-US, CORRA, DV01
+
+Phase 2 builds: bill ACT/365 conversion plus secondary-market average yield,
+benchmark YTM par-approx curve with monotone interpolation on log discounts,
+slopes 2s10s, 2s5s, 5s10s, 10s30s with 60 plus 250 day z, 1M carry-roll on an
+unchanged curve, CA-US 2y, 5y, 10y same-day plus lagged spreads, CORRA minus
+target, DV01-neutral illustrative backtest with one fixed rule, no NSS in v1.
+
+### Key Findings
+| Finding | Source | Confidence | Application |
+|---------|--------|------------|-------------|
+| CA T-bill quoted yield is bank-add-on: `Y = (F-P)/P * 365/t` with `t` actual days remaining, 365-day year; inversion `P = F/(1+Y*t/365)`. Applies to secondary-market average yields (BoC `tbill` group 1M/3M/6M/1Y) as well as auction averages; `t` uses standard terms about 30/91/182/365 days but must be actual days for conversion | Finance Canada technical guide; CFFiM conventions | High | Bill engine: convert each secondary-market avg yield to price via actual `t`; never use 360-day or bond-equivalent without conversion; store `t_days` and convention label |
+| GoC domestic bond price convention is semi-annual discounting: `P = sum_n CF_n/(1+y/200)^n`, `CF_n = coupon/2`, final `+100`; accrued uses Actual/365; quoted price excludes accrued, YTM solves dirty price equality | Finance Canada technical guide | High | Verify cross-check only; yields remain stored primitive; price math documents par-approx limits |
+| BoC benchmark yields are NOT par yields: mid-market closing YTMs of selected issues maturing approximately in term (2/3/5/7/10Y plus Long); issue rotates when building benchmark is adopted (e.g. 2Y 2028-08-01 2.75 percent eff. 2026-08-06; 10Y 2036-06-01 3.25 percent eff. 2026-06-23); day-to-day change can reflect switch to a more topical issue, not market move | BoC selected bond yields page; Notes on Canadian bond yields; bench_CDN.pdf | High | Par-approx must flag `benchmark_switch` dates from bench_CDN effective dates; z-scores and carry must be interpreted across switches; never present v1 curve as true par or zero curve |
+| Par-approx error sources: (1) coupon bias (benchmark coupon differs from par, price differs from 100, so YTM differs from par yield for same maturity); (2) tenor mismatch (actual residual maturity differs from label, worst at long end where Long benchmark is ~30Y proxy, e.g. 2057-12-01 3.50 percent); (3) switch jumps. No NSS in v1 by design; label output `par_approx` plus method version | BoC notes page; Finance Canada price formula; BIS Papers 25 on BoC MLES vs NSS choice | High | Disclosure string in snapshot methods; long-end 10s30s slope carries largest approx error; tester pins switch-date cases |
+| US Treasury official par curve is monotone convex (Hagan-West family) on bootstrapped instantaneous forwards from on-the-run bid prices (FRBNY about 15:30 ET), true par since 2021-12-06 replacing quasi-cubic Hermite spline; v1 does NOT replicate it, FRED DGS CMTs are consumed as comparators only | Treasury yield curve methodology (2025-02-18 revision); methodology change sheet | High | Do not fit NSS or MC in v1; cite Treasury only to justify why CA v1 stays par-approx and why CA-US spread compares benchmark-YTM vs CMT-par with disclosed basis |
+| BoC official zero-coupon curve uses Merrill Lynch Exponential Spline (MLES) on bond plus bill prices, daily 0.25 to 30Y, published weekly Thursday about 16:30 ET with two-week lag; v1 must not confuse this lagged statistical curve with daily par-approx trading curve | Bolder-Johnson-Metzler 2004-48; BIS Papers 25 technical note; BoC yield-curves page | High | Roadmap note: Phase 6 true bootstrap may target MLES or NSS; v1 daily curve is separate product with its own method id |
+| Interpolation rationale: interpolate monotone (PCHIP) on log discounts `ln D` vs `T`, not linear on yields. Linear-on-yield breaks discount monotonicity and implies discontinuous forwards (Hagan-West Raw method = piecewise-constant forwards). Log-discount linear guarantees positive decreasing `D`, positive forwards, no negative-rate arbitrage in normal regimes; monotone (PCHIP/Hyman filter) preserves shape without overshoot that cubic splines produce | Hagan-West 2006 AMF and 2008 Wilmott; NAG e01cef reference | High | Curve engine: `D_i = 1/(1+y_i/2)^(2*T_label)` proxy, PCHIP on `(T, ln D)`, recover `y(T)`; clamp flat extrapolation, never extrapolate beyond Long; document as `log-discount-PCHIP-v1` |
+| Slope z: rolling `z = (s-mu)/sigma` on 60-day (about 3M, tactical) plus 250-day (about 1Y, cyclical) windows; require min obs (60-window needs at least 40 non-NA, 250-window at least 150) else `NA` with `insufficient_history` flag; regime flags on benchmark-switch dates and BoC policy dates; switch handling is flag-plus-freeze (hold z NaN for 5 days post-switch or annotate), never splice-adjust yields in v1 | Standard rolling-z practice; BoC switch note (change may reflect switch) | Medium | Backend implements `min_obs` gate plus `regime_flag`; tester validates NaN handling and flag propagation |
+| Carry-roll 1M on unchanged curve: `roll_yield_move = y(T-1M tenor point)-y(T)` read off same-day curve, `carry_1M ≈ y(T)*h + roll` simplified, disclosed NO coupon accrual and NO funding leg; horizon fixed 1 month (21 biz days approx); yields in percent annualised, result in percent per month | Market carry/roll-down definition; BoC curve data as input | Medium | Label `carry_roll_1M_unChanged_curve_ex_coupon`; methods text must state simplification; no P and L claim |
+| DV01 hedge: `DV01 ≈ ModDur*P*0.0001` per unit notional; `ModDur = MacDur/(1+y/2)`; duration-neutral ratio `HR = DV01_long/DV01_short`; illustrative backtest uses one fixed rule (e.g. DV01-neutral 2s10s flattener held N days) with costs disclosed as zero; not a strategy recommendation | CME DV01 guides; AnalystPrep hedge-ratio note; MX LGB spread paper (currency-adjusted DV01 ratio pattern) | High | Backtest module: compute DV01 from par-approx yields plus assumed par coupon, size short leg by HR, report gross moves only |
+| CA-US join: inner join on common SIFMA-plus-BoC business days; same-day spread plus 1-day lagged (CA date vs prior US print) to handle FRED T+1 and 16:15 ET H.15 timing; never forward-fill, missing leg yields `NA` spread; CORRA value-date never joined to same-day yields without lag note | Phase 1 calendar finding; FRED H.15 timing; BoC CORRA T+1 pub rule | High | Snapshot join keys `ca_us_same_day` and `ca_us_lagged_1d`; verify asserts no forward-fill |
+| CORRA calc: trimmed volume-weighted median (drop bottom 25 percent volume as specials), fallback = target plus 5-day mean CORRA-target spread if trimmed volume below max(3B, 30 percent of 5-day avg) or technical failure; CORRA value-date T published T+1 about 09:00 ET, index 11:30 ET same-day; spread `CORRA minus target` uses target effective that value date | BoC CORRA methodology page | High | CORRA engine: store value date, pub date, fallback flag; spread in bp vs target vintage |
+
+### Relevant Equations
+| Equation | Description | Variables |
+|----------|-------------|-----------|
+| `Y = (F-P)/P * 365/t` | CA T-bill quoted add-on yield | Y decimal, F face, P price, t actual days |
+| `P = F/(1+Y*t/365)` | T-bill price inversion (verify plus bill engine) | Same as above |
+| `P = sum_n CF_n/(1+y/200)^n` | GoC bond price from YTM | P per 100, CF coupon/2 (final +100), y percent, n half-years |
+| `D_i = 1/(1+y_i/200)^(2*T_i)` then PCHIP on `(T_i, ln D_i)` | v1 discount proxy plus log-interpolation | y_i benchmark YTM percent, T_i label tenors 2/5/10/30 (Long=30 proxy) |
+| `y(T) = 2*(D(T)^(-1/(2*T))-1)*100` | Recover semi-annual par-approx yield from interpolated discount | D(T) = exp(interp ln D), T years |
+| `s = y_L - y_S` (bp = *100) | Slope e.g. 2s10s | y in percent |
+| `z_k = (s-mu_k)/sigma_k`, k in {60, 250} | Rolling slope z | mu/sigma sample mean/std over k biz days, min obs gate |
+| `CORRA_spread = CORRA - target` | Funding pressure gauge | Percent, converted to bp |
+| `ModDur = (1/P)*sum_n n/2*CF_n/(1+y/200)^(n+1)/100` approx; `DV01 = ModDur*P*0.0001` | Dollar value of 01 per 100 notional | P price, y percent |
+| `HR = DV01_long/DV01_short`; `N_short = N_long*HR` | DV01-neutral hedge ratio | N notionals |
+| `carry_1M ≈ y(T)*h + (y(T-h_curve)-y(T))` with h=1/12, unchanged curve | Simplified roll-down carry, ex-coupon ex-funding | y percent decimal |
+
+### Validation Data
+| Benchmark | Value | Source | Uncertainty |
+|-----------|-------|--------|-------------|
+| Bill example 990.13 per 1000, 91-day implies 4.00 percent | 4.00 percent | Finance Canada guide | Exact by convention; t must be actual |
+| Current benchmarks (Oct 2026 vintage): 2Y 2028-08-01 2.75 percent (2026-08-06); 5Y 2031-09-01 3.00 percent (2026-09-10); 10Y 2036-06-01 3.25 percent (2026-06-23); Long 2057-12-01 3.50 percent (2026-03-06) | See table | BoC selected yields plus bench_CDN.pdf | Rotates; effective date recorded |
+| Sample benchmark prints 2026-10-21: 2Y 3.32, 5Y 3.62, 10Y 3.90, Long 4.19 percent | See row | BoC selected bond yields | Daily mid-market close, CanDeal DNA |
+| Treasury MC par method live 2021-12-06; inputs most-recently-auctioned bills/notes/bonds, FRBNY about 15:30 ET bid | Method date | Treasury methodology plus change sheet | Treasury reserves input changes |
+| BoC zero-coupon DB lag two weeks, Thursday 16:30 ET | Schedule | BoC yield-curves page | NA on holidays |
+| CORRA fallback rule max(3B, 30 percent of 5-day avg); trim bottom 25 percent volume | Rule | BoC CORRA methodology | Threshold computed daily |
+| FRED DGS T+1 latency, never revised | Latency | Phase 1 FRED finding; H.15 16:15 ET | No vintage handling |
+
+### Practical Implications
+- Bill module converts each BoC secondary-market average yield with actual `t` and 365-day add-on; stores `t_days`, convention `ACT/365-add-on`, inversion check at 0.1 bp; auction averages reuse same formula with auction term days.
+- Curve module v1: inputs 2Y/5Y/10Y/Long benchmark YTMs (plus 3Y/7Y for diagnostics only); proxy tenors 2/5/10/30; PCHIP on log discounts; flat ends; method id `par-approx-logdiscount-PCHIP-v1`; output flagged `is_par_approx=true`, `is_zero=false`, `is_nss=false`.
+- Switch table from bench_CDN effective dates drives `benchmark_switch` flags; z frozen/NA window 5 days; carry annotated across switches; 10s30s slope gets `high_approx_error` warning.
+- Join module: inner join on joint CA-US biz days; two CA-US spreads (same-day, lagged-1d); no forward-fill assertion in verify; CORRA spread separate daily series by value date.
+- Backtest: single fixed DV01-neutral rule, gross moves only, zero-cost disclosure, no Sharpe or live-signal claims; DV01 from par-approx yields assuming par coupon.
+- Phase 6 note: true bootstrap (MLES per Bolder et al. or NSS) deferred; v1 interpolation choice keeps forwards positive and local, unlike cubic-on-yield.
+
+### Citations
+1. Finance Canada, "Determining Bond and Treasury Bill Prices and Yields" - https://www.canada.ca/en/department-finance/programs/financial-sector-policy/securities/securities-technical-guide/determining-bond-treasury-bill-prices-yields.html
+2. Bank of Canada, "Selected bond yields" and "Notes on Canadian bond yields" - https://www.bankofcanada.ca/rates/interest-rates/canadian-bonds and https://www.bankofcanada.ca/rates/interest-rates/lookup-bond-yields/notes-on-canadian-bond-yields
+3. Bank of Canada, bench_CDN.pdf benchmark issues plus effective dates - https://www.bankofcanada.ca/stats/assets/pdf/bench_CDN.pdf
+4. Bank of Canada, "Yield curves for zero-coupon bonds" - https://www.bankofcanada.ca/rates/interest-rates/bond-yield-curves
+5. Bolder, Johnson, Metzler, "An Empirical Analysis of the Canadian Term Structure of Zero-Coupon Interest Rates," BoC WP 2004-48 - https://doi.org/10.34989/swp-2004-48
+6. BIS Papers 25, "Zero-coupon yield curves: technical documentation" (BoC MLES note) - https://www.bis.org/publ/bppdf/bispap25.htm
+7. US Treasury, "Treasury Yield Curve Methodology" (rev. 2025-02-18) - https://home.treasury.gov/policy-issues/financing-the-government/interest-rate-statistics/treasury-yield-curve-methodology
+8. US Treasury, "Yield Curve Methodology Change Information Sheet" (HS to MC 2021-12-06)
+9. Hagan and West, "Interpolation Methods for Curve Construction," Applied Mathematical Finance 13(2) 2006; "Methods for Constructing a Yield Curve," Wilmott May 2008
+10. Bank of Canada, "Methodology for calculating CORRA" - https://www.bankofcanada.ca/rates/interest-rates/corra/methodology-calculating-corra
+11. CME Group, "Calculating the Dollar Value of a Basis Point" and "How Can You Measure Risk in Treasuries" (DV01 via modified duration)
+12. Montreal Exchange, "Yield Curve Spread Canada-US" (DV01-neutral hedge ratio pattern)
+13. CFFiM, "Canadian Conventions in Fixed Income Markets" (ACT/365)
+14. Statistics Canada tables 10-10-0144 / WDS releaseTime practice (Phase 1 pin: join outputs carry source vintage markers; no StatCan yield inputs in Phase 2)
+
+### Verification Checklist
+- [x] Findings are from reputable sources
+- [x] Equations are correctly transcribed
+- [x] Validation data includes uncertainty
+- [x] Practical implications are actionable
+- [x] All sources cited
+- [x] Research supports phase architecture decisions
