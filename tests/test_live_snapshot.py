@@ -115,6 +115,34 @@ def test_live_degraded_fred_passes_v01_to_v22(tmp_path: Path) -> None:
     assert "degraded" in by_id["V18"]["detail"].lower()
 
 
+def test_live_degraded_cpi_passes_v01_to_v22(tmp_path: Path) -> None:
+    """A CPI bulk disagreement omits inflation but still passes V19 to V22."""
+    from goc_rates.live_snapshot import _degraded_cpi_provenance
+
+    benchmark_map = load_benchmark_map(CONFIG)
+    valet_by_series, fred_by_series, last = _histories()
+    snapshot_date = dt.date.fromisoformat(last)
+    observations, provenance, warnings = build_live_observations(
+        snapshot_date, benchmark_map, valet_by_series, fred_by_series, True, None
+    )
+    assert "inflation" not in observations
+    warnings.append("CPI degraded, inflation omitted: Meat 2.40 vs live 1.87")
+    provenance["statcan_cpi"] = _degraded_cpi_provenance(
+        None, snapshot_date, "Meat 2.40 vs live 1.87"
+    )
+    assert provenance["statcan_cpi"]["status"] == "missing"
+    report = _write_and_verify(tmp_path, last, observations, provenance, warnings)
+    by_id = {item["id"]: item for item in report["checks"]}
+    for check_id in ("V19", "V20", "V21", "V22"):
+        assert by_id[check_id]["passed"] is True
+        assert (
+            "missing" in by_id[check_id]["detail"].lower()
+            or "skip" in by_id[check_id]["detail"].lower()
+        )
+    assert by_id["V13"]["passed"] is True
+    assert report["passed_count"] == 22
+
+
 def test_resolve_target_date_strict_and_previous_joint() -> None:
     """Explicit dates are strict ISO and missing dates map to the prior joint day."""
     assert resolve_target_date("2026-10-30") == dt.date(2026, 10, 30)

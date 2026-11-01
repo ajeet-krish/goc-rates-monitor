@@ -95,11 +95,12 @@ def load_benchmark_map(path: str | Path) -> BenchmarkMap:
     )
 
 
-CPI_SCHEMA_VERSION = 1
+CPI_SCHEMA_VERSION = 2
 
 CPI_LINK_MONTH_PATTERN = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 CPI_PRODUCT_ID_PATTERN = re.compile(r"^[1-9][0-9]{7}$")
 CPI_VECTOR_ID_PATTERN = re.compile(r"^[0-9]{8}$")
+CPI_BASKET_VECTOR_PATTERN = re.compile(r"^[0-9]{8}(?:[0-9]{2})?$")
 
 EXPECTED_CPI_PRODUCT_IDS: dict[str, int] = {
     "cpi_monthly": 18100004,
@@ -111,6 +112,8 @@ EXPECTED_PUBLISHED_KEYS: tuple[str, str] = (
     "trim_index_vector_id",
     "median_index_vector_id",
 )
+
+BASKET_EXCLUSION_REASONS: frozenset[str] = frozenset({"aggregate", "special_aggregate"})
 
 
 @dataclass(frozen=True)
@@ -131,6 +134,17 @@ class CpiComponent:
     vector_id: str
     weight_percent: float
     seasonally_adjusted: bool
+    basket_product_groups: tuple[str, ...]
+    basket_vector_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BasketExclusion:
+    """One excluded basket product: aggregate or special aggregate."""
+
+    product_group: str
+    vector_id: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -142,6 +156,7 @@ class CpiConfig:
     product_ids: dict[str, int]
     components: tuple[CpiComponent, ...]
     published: dict[str, str]
+    basket_exclusions: tuple[BasketExclusion, ...]
 
 
 def load_cpi_config(path: str | Path) -> CpiConfig:
@@ -205,6 +220,8 @@ def load_cpi_config(path: str | Path) -> CpiConfig:
     components: list[CpiComponent] = []
     seen_ids: set[str] = set()
     seen_vectors: set[str] = set()
+    seen_basket_products: set[str] = set()
+    seen_basket_vectors: set[str] = set()
     for row in raw_components:
         if not isinstance(row, dict):
             raise ValueError("CPI component rows must be mappings")
@@ -240,6 +257,27 @@ def load_cpi_config(path: str | Path) -> CpiConfig:
         seasonally_adjusted = row.get("seasonally_adjusted")
         if not isinstance(seasonally_adjusted, bool):
             raise ValueError(f"CPI seasonally_adjusted for {cleaned_id!r} must be a bool")
+        basket_groups = _load_basket_list(row, cleaned_id, "basket_product_groups")
+        basket_vectors = _load_basket_list(row, cleaned_id, "basket_vector_ids")
+        if len(basket_groups) != len(basket_vectors):
+            raise ValueError(
+                f"CPI basket lists for {cleaned_id!r} must be parallel equal length, "
+                f"got {len(basket_groups)} groups and {len(basket_vectors)} vectors"
+            )
+        if not basket_groups:
+            raise ValueError(f"CPI basket lists for {cleaned_id!r} must be non empty")
+        for group, vector in zip(basket_groups, basket_vectors, strict=True):
+            if not CPI_BASKET_VECTOR_PATTERN.match(vector):
+                raise ValueError(
+                    f"CPI basket vector for {cleaned_id!r} must be an 8 digit classic "
+                    f"id or a 10 digit extended id, got {vector!r}"
+                )
+            if group in seen_basket_products:
+                raise ValueError(f"duplicate CPI basket product group: {group!r}")
+            if vector in seen_basket_vectors:
+                raise ValueError(f"duplicate CPI basket vector id: {vector!r}")
+            seen_basket_products.add(group)
+            seen_basket_vectors.add(vector)
         components.append(
             CpiComponent(
                 component_id=cleaned_id,
@@ -247,14 +285,18 @@ def load_cpi_config(path: str | Path) -> CpiConfig:
                 vector_id=cleaned_vector,
                 weight_percent=weight_value,
                 seasonally_adjusted=seasonally_adjusted,
+                basket_product_groups=tuple(basket_groups),
+                basket_vector_ids=tuple(basket_vectors),
             )
         )
+    exclusions = _load_basket_exclusions(raw, seen_basket_products, seen_basket_vectors)
     return CpiConfig(
         schema_version=int(schema_version),
         weight_vintage=vintage,
         product_ids=product_ids,
         components=tuple(components),
         published=_load_cpi_published(raw),
+        basket_exclusions=tuple(exclusions),
     )
 
 
@@ -287,3 +329,66 @@ def _load_cpi_published(raw: dict[str, object]) -> dict[str, str]:
             )
         published[str(name)] = cleaned
     return published
+
+
+def _load_basket_list(row: dict[str, object], component_id: str, key: str) -> list[str]:
+    """Return a cleaned non empty string list for a basket mapping key."""
+    raw_list = row.get(key)
+    if not isinstance(raw_list, list) or not raw_list:
+        raise ValueError(f"CPI {key} for {component_id!r} must be a non empty list")
+    cleaned: list[str] = []
+    for item in raw_list:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"CPI {key} for {component_id!r} must hold non empty strings")
+        cleaned.append(item.strip())
+    return cleaned
+
+
+def _load_basket_exclusions(
+    raw: dict[str, object],
+    seen_products: set[str],
+    seen_vectors: set[str],
+) -> list[BasketExclusion]:
+    """Load basket exclusions with aggregate or special aggregate reasons."""
+    raw_exclusions = raw.get("basket_exclusions")
+    if raw_exclusions is None:
+        raise ValueError("CPI registry needs a basket_exclusions list")
+    if not isinstance(raw_exclusions, list):
+        raise ValueError("CPI basket_exclusions must be a list")
+    exclusions: list[BasketExclusion] = []
+    for entry in raw_exclusions:
+        if not isinstance(entry, dict):
+            raise ValueError("CPI basket_exclusions rows must be mappings")
+        product = entry.get("product_group", "")
+        vector = entry.get("vector_id", "")
+        reason = entry.get("reason", "")
+        if not isinstance(product, str) or not product.strip():
+            raise ValueError("CPI exclusion product_group must be a non empty string")
+        if not isinstance(vector, str) or not vector.strip():
+            raise ValueError("CPI exclusion vector_id must be a non empty string")
+        if not isinstance(reason, str) or reason.strip() not in BASKET_EXCLUSION_REASONS:
+            raise ValueError(
+                "CPI exclusion reason must be one of "
+                f"{sorted(BASKET_EXCLUSION_REASONS)}, got {reason!r}"
+            )
+        cleaned_product = product.strip()
+        cleaned_vector = vector.strip()
+        if not CPI_BASKET_VECTOR_PATTERN.match(cleaned_vector):
+            raise ValueError(
+                f"CPI exclusion vector for {cleaned_product!r} must be an 8 digit "
+                f"classic id or a 10 digit extended id, got {cleaned_vector!r}"
+            )
+        if cleaned_product in seen_products:
+            raise ValueError(f"duplicate CPI basket product group: {cleaned_product!r}")
+        if cleaned_vector in seen_vectors:
+            raise ValueError(f"duplicate CPI basket vector id: {cleaned_vector!r}")
+        seen_products.add(cleaned_product)
+        seen_vectors.add(cleaned_vector)
+        exclusions.append(
+            BasketExclusion(
+                product_group=cleaned_product,
+                vector_id=cleaned_vector,
+                reason=reason.strip(),
+            )
+        )
+    return exclusions

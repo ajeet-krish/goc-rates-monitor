@@ -4,12 +4,13 @@ Loads the benchmark map, fetches the Valet bond_yields_benchmark group with
 label assertion, targets the previous joint business day in Toronto, records
 CORRA dates without inventing a rate, fetches FRED DGS yields when a key is
 present else marks spreads and backtest missing with degraded quality, skips
-StatCan when no indicators are configured, fetches the StatCan CPI bulk
-zips and builds the experimental inflation section with no degraded path,
-builds the curve from observed yields, joins spreads on same dates where
-possible, runs the backtest where 254 joint prints exist else marks it
-missing, and writes snapshot.json plus manifest.json through the canonical
-snapshot writer.
+StatCan when no indicators are configured, tries the StatCan CPI bulk
+zips and builds the experimental inflation section with a degraded path
+that omits inflation and marks statcan_cpi missing, builds the curve
+from observed yields, joins spreads on same dates where possible, runs
+the backtest where 254 joint prints exist else marks it missing, and
+writes snapshot.json plus manifest.json through the canonical snapshot
+writer.
 """
 
 from __future__ import annotations
@@ -36,6 +37,40 @@ VALET_GROUP_URL = f"{VALET_BASE_URL}/observations/group/{VALET_GROUP}/json"
 FRED_SERIES_URL = f"{FRED_BASE_URL}/series/observations"
 
 TENORS = ("2Y", "5Y", "10Y", "30Y")
+
+CPI_DEGRADED_MONTHLY_PRODUCT_ID = 18100004
+
+
+def _degraded_cpi_provenance(
+    cpi_config: Any | None,
+    snapshot_date: dt.date,
+    reason: str,
+) -> dict[str, Any]:
+    """Build the statcan_cpi missing marker for a degraded CPI run.
+
+    The marker keeps source_url, retrieved_utc, and vintage non empty
+    so V09 still passes while status missing records the CPI failure.
+    """
+    monthly_product = CPI_DEGRADED_MONTHLY_PRODUCT_ID
+    vintage_text = snapshot_date.isoformat()
+    if cpi_config is not None:
+        try:
+            monthly_product = int(cpi_config.product_ids.get("cpi_monthly", monthly_product))
+        except (ValueError, TypeError, AttributeError):
+            pass
+        try:
+            link_month = cpi_config.weight_vintage.link_month
+            if isinstance(link_month, str) and link_month.strip():
+                vintage_text = link_month.strip()
+        except AttributeError:
+            pass
+    return {
+        "source_url": (f"{STATCAN_WDS_BASE_URL}/getFullTableDownloadCSV/{monthly_product}/en"),
+        "retrieved_utc": _retrieved_utc_now(),
+        "vintage": vintage_text,
+        "status": "missing",
+        "reason": f"CPI bulk agreement failed: {reason}".strip(),
+    }
 
 
 def resolve_target_date(date_text: str | None, now: dt.datetime | None = None) -> dt.date:
@@ -460,6 +495,9 @@ def run_live_snapshot(
 
     try:
         api_key = read_api_key()
+        cpi_config: Any | None = None
+        cpi_bulk: dict[str, BulkTable] = {}
+        cpi_fetch_error: ValueError | None = None
         with BaseClient() as client:
             valet_by_series = fetch_valet_group(
                 VALET_GROUP, client, expected_labels=expected_labels, recent_limit=2000
@@ -508,10 +546,15 @@ def run_live_snapshot(
                         for point in points
                     ]
                 statcan_vectors = packed
-            cpi_config = load_cpi_config(cpi_config_path)
-            cpi_bulk: dict[str, BulkTable] = {}
-            for bulk_name, product_id in cpi_config.product_ids.items():
-                cpi_bulk[bulk_name] = fetch_bulk_table(product_id, client)
+            try:
+                cpi_config = load_cpi_config(cpi_config_path)
+                fetched_bulk: dict[str, BulkTable] = {}
+                for bulk_name, product_id in cpi_config.product_ids.items():
+                    fetched_bulk[bulk_name] = fetch_bulk_table(product_id, client)
+                cpi_bulk = fetched_bulk
+            except ValueError as exc:
+                cpi_fetch_error = exc
+                print(f"CPI degraded, bulk fetch omitted: {exc}", file=sys.stderr)
         observations, provenance, warnings = build_live_observations(
             snapshot_date,
             benchmark_map,
@@ -520,11 +563,26 @@ def run_live_snapshot(
             fred_available,
             statcan_vectors,
         )
-        inflation_section, cpi_prov_entry = build_inflation_section_from_bulk(
-            cpi_config, cpi_bulk, _retrieved_utc_now()
-        )
-        observations["inflation"] = inflation_section
-        provenance["statcan_cpi"] = cpi_prov_entry
+        if cpi_fetch_error is not None:
+            print(f"CPI degraded, omitting inflation: {cpi_fetch_error}", file=sys.stderr)
+            warnings.append(f"CPI degraded, inflation omitted: {cpi_fetch_error}")
+            provenance["statcan_cpi"] = _degraded_cpi_provenance(
+                cpi_config, snapshot_date, str(cpi_fetch_error)
+            )
+        else:
+            assert cpi_config is not None
+            try:
+                inflation_section, cpi_prov_entry = build_inflation_section_from_bulk(
+                    cpi_config, cpi_bulk, _retrieved_utc_now()
+                )
+                observations["inflation"] = inflation_section
+                provenance["statcan_cpi"] = cpi_prov_entry
+            except ValueError as exc:
+                print(f"CPI degraded, omitting inflation: {exc}", file=sys.stderr)
+                warnings.append(f"CPI degraded, inflation omitted: {exc}")
+                provenance["statcan_cpi"] = _degraded_cpi_provenance(
+                    cpi_config, snapshot_date, str(exc)
+                )
     except Exception as exc:
         print(f"live fetch failed: {exc}", file=sys.stderr)
         return _write_skeleton_fallback(snapshot_date, benchmark_map, directory, str(exc))

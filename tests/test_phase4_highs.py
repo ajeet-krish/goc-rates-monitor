@@ -18,18 +18,69 @@ from tests.cpi_fixtures import CPI_REGISTRY_PATH, build_demo_inflation
 
 
 def _basket_zip(
-    weights: dict[str, float],
+    weights_by_product: dict[str, float],
+    vectors_by_product: dict[str, str] | None = None,
     year: int = 2024,
-    link: str = "2025-05",
-    member: str = "basket-weights.csv",
 ) -> bytes:
-    """Build an in memory basket weights zip for fixtures."""
-    lines = ["VECTOR,WEIGHT_PERCENT,EXPENDITURE_YEAR,LINK_MONTH"]
-    for vector in sorted(weights.keys()):
-        lines.append(f"{vector},{weights[vector]},{year},{link}")
+    """Build an in memory basket weights zip using the live 18100007 schema.
+
+    Keys are basket product groups with percent weights. Vectors default to
+    distinct 8 digit ids, but callers pass the registry basket vectors so
+    the slice carries real product group and vector pins with retained
+    coordinates. Fields are CSV quoted so product commas survive.
+    """
+    import csv as csv_mod
+
+    vectors = vectors_by_product or {}
+    output = io.StringIO()
+    writer = csv_mod.writer(output, lineterminator="\n")
+    writer.writerow(
+        [
+            "REF_DATE",
+            "GEO",
+            "DGUID",
+            "Products and product groups",
+            "Price period of weight",
+            "Geographic distribution of weight",
+            "UOM",
+            "UOM_ID",
+            "SCALAR_FACTOR",
+            "SCALAR_ID",
+            "VECTOR",
+            "COORDINATE",
+            "VALUE",
+            "STATUS",
+            "SYMBOL",
+            "TERMINATED",
+            "DECIMALS",
+        ]
+    )
+    for position, product in enumerate(sorted(weights_by_product.keys())):
+        vector = vectors.get(product, f"{40000000 + position:08d}")
+        writer.writerow(
+            [
+                str(year),
+                "Canada",
+                "2016A000011124",
+                product,
+                "Weight at basket link month prices",
+                "Distribution to selected geographies",
+                "Percent",
+                "239",
+                "units",
+                "0",
+                vector,
+                f"1.{position + 1}.1.1",
+                str(weights_by_product[product]),
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
-        archive.writestr(member, "\n".join(lines).encode("utf-8"))
+        archive.writestr("basket-weights.csv", output.getvalue().encode("utf-8"))
     return buffer.getvalue()
 
 
@@ -42,29 +93,63 @@ def _registry_weights() -> tuple[dict[str, float], dict[str, str]]:
     return weights, mapping
 
 
+def _matching_basket_slice(
+    config: object,
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Return basket product weights and vectors matching the registry.
+
+    Each component aggregate splits its registry weight evenly across its
+    mapped groups so the slice passes agreement. Exclusions get a small
+    positive weight so they exist without affecting the component total.
+    """
+    from goc_rates.config import CpiConfig
+
+    assert isinstance(config, CpiConfig)
+    weights_by_product: dict[str, float] = {}
+    vectors_by_product: dict[str, str] = {}
+    for component in config.components:
+        groups = list(component.basket_product_groups)
+        vectors = list(component.basket_vector_ids)
+        share = float(component.weight_percent) / float(len(groups))
+        for group, vector in zip(groups, vectors, strict=True):
+            weights_by_product[group] = share
+            vectors_by_product[group] = vector
+    for exclusion in config.basket_exclusions:
+        weights_by_product[exclusion.product_group] = 0.01
+        vectors_by_product[exclusion.product_group] = exclusion.vector_id
+    return weights_by_product, vectors_by_product
+
+
 def test_basket_weights_parse_matches_registry() -> None:
     """A basket zip matching the registry parses with the pinned vintage."""
-    weights, _ = _registry_weights()
-    payload = _basket_zip(weights)
-    basket = extract_basket_weights(payload)
+    config = load_cpi_config(CPI_REGISTRY_PATH)
+    weights_by_product, vectors_by_product = _matching_basket_slice(config)
+    payload = _basket_zip(weights_by_product, vectors_by_product)
+    basket = extract_basket_weights(payload, expenditure_year=2024, link_month="2025-05")
     assert basket.expenditure_year == 2024
     assert basket.link_month == "2025-05"
-    for vector, weight in weights.items():
-        assert basket.weights_percent[vector] == pytest.approx(weight, abs=1e-9)
+    from goc_rates.cpi.basket_map import check_basket_agreement
+
+    aggregated = check_basket_agreement(config, basket)
+    for component in config.components:
+        assert aggregated[component.component_id] == pytest.approx(
+            component.weight_percent, abs=1e-9
+        )
 
 
 def test_basket_weight_disagree_fails_closed() -> None:
     """A basket weight drifting beyond rounding tolerance fails closed."""
     from goc_rates.config import load_cpi_config
-    from goc_rates.cpi.bulk import BASKET_WEIGHT_TOLERANCE_PP
+    from goc_rates.cpi.basket_map import component_tolerance
     from goc_rates.cpi.section import build_inflation_section_from_bulk
 
     config = load_cpi_config(CPI_REGISTRY_PATH)
-    weights, _ = _registry_weights()
-    bad_weights = dict(weights)
-    first = sorted(bad_weights.keys())[0]
-    bad_weights[first] = bad_weights[first] + BASKET_WEIGHT_TOLERANCE_PP + 0.05
-    basket_bytes = _basket_zip(bad_weights)
+    weights_by_product, vectors_by_product = _matching_basket_slice(config)
+    first_component = config.components[0]
+    first_group = first_component.basket_product_groups[0]
+    tolerance = component_tolerance(len(first_component.basket_product_groups))
+    weights_by_product[first_group] = weights_by_product[first_group] + tolerance + 0.05
+    basket_bytes = _basket_zip(weights_by_product, vectors_by_product)
     bulk: dict[str, BulkTable] = {}
     for name, product_id in (
         ("cpi_monthly", 18100004),
@@ -85,32 +170,15 @@ def test_basket_weight_disagree_fails_closed() -> None:
         build_inflation_section_from_bulk(config, bulk, "2026-10-01T00:00:00Z")
 
 
-def test_basket_link_month_disagree_fails_closed() -> None:
-    """A basket link month differing from the registry fails closed."""
-    from goc_rates.config import load_cpi_config
-    from goc_rates.cpi.section import build_inflation_section_from_bulk
-
+def test_basket_link_month_pin_validated() -> None:
+    """The caller pinned link month is validated and carried to the result."""
     config = load_cpi_config(CPI_REGISTRY_PATH)
-    weights, _ = _registry_weights()
-    basket_bytes = _basket_zip(weights, link="2025-06")
-    bulk: dict[str, BulkTable] = {}
-    for name, product_id in (
-        ("cpi_monthly", 18100004),
-        ("core_statistics", 18100256),
-        ("basket_weights", 18100007),
-    ):
-        payload = basket_bytes if name == "basket_weights" else b"dummy"
-        digest = hashlib.sha256(payload).hexdigest()
-        bulk[name] = BulkTable(
-            product_id=product_id,
-            zip_url=f"https://www150.statcan.gc.ca/n1/tbl/{name}.zip",
-            zip_sha256=digest,
-            retrieved_utc="2026-10-01T00:00:00Z",
-            members=(),
-            zip_bytes=payload,
-        )
-    with pytest.raises(ValueError, match="link month"):
-        build_inflation_section_from_bulk(config, bulk, "2026-10-01T00:00:00Z")
+    weights_by_product, vectors_by_product = _matching_basket_slice(config)
+    payload = _basket_zip(weights_by_product, vectors_by_product)
+    basket = extract_basket_weights(payload, expenditure_year=2024, link_month="2025-05")
+    assert basket.link_month == "2025-05"
+    with pytest.raises(ValueError, match="link_month"):
+        extract_basket_weights(payload, expenditure_year=2024, link_month="2025-13")
 
 
 def _demo_snapshot() -> dict[str, Any]:
@@ -225,6 +293,8 @@ def test_duplicate_vector_id_rejected() -> None:
             vector_id=config.components[0].vector_id,
             weight_percent=item.weight_percent,
             seasonally_adjusted=item.seasonally_adjusted,
+            basket_product_groups=item.basket_product_groups,
+            basket_vector_ids=item.basket_vector_ids,
         )
         for item in config.components
     )
@@ -234,6 +304,7 @@ def test_duplicate_vector_id_rejected() -> None:
         product_ids=dict(config.product_ids),
         components=tampered,
         published=dict(config.published),
+        basket_exclusions=tuple(config.basket_exclusions),
     )
     with pytest.raises(ValueError, match="duplicate.*vector"):
         specs_from_config(drifted)

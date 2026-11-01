@@ -21,6 +21,8 @@ class ComponentSpec:
     vector_id: str
     weight_percent: float
     seasonally_adjusted: bool
+    basket_product_groups: tuple[str, ...]
+    basket_vector_ids: tuple[str, ...]
 
 
 def specs_from_config(config: CpiConfig) -> tuple[ComponentSpec, ...]:
@@ -28,7 +30,8 @@ def specs_from_config(config: CpiConfig) -> tuple[ComponentSpec, ...]:
 
     The engine reuses StatCan seasonally adjusted values as published, so
     every registry row must assert seasonally_adjusted true and the count
-    must pin exactly 55 components. Any drift fails closed.
+    must pin exactly 55 components. Basket product groups and vector ids
+    must be parallel equal length and globally unique. Any drift fails closed.
     """
     if len(config.components) != EXPECTED_COMPONENT_COUNT:
         raise ValueError(
@@ -38,6 +41,8 @@ def specs_from_config(config: CpiConfig) -> tuple[ComponentSpec, ...]:
     specs: list[ComponentSpec] = []
     seen_ids: set[str] = set()
     seen_vectors: set[str] = set()
+    seen_basket_products: set[str] = set()
+    seen_basket_vectors: set[str] = set()
     for component in config.components:
         if not component.seasonally_adjusted:
             raise ValueError(
@@ -50,6 +55,30 @@ def specs_from_config(config: CpiConfig) -> tuple[ComponentSpec, ...]:
             raise ValueError(f"duplicate CPI vector_id: {component.vector_id!r}")
         seen_ids.add(component.component_id)
         seen_vectors.add(component.vector_id)
+        groups = tuple(component.basket_product_groups)
+        vectors = tuple(component.basket_vector_ids)
+        if not groups or not vectors:
+            raise ValueError(f"CPI basket lists for {component.component_id!r} must be non empty")
+        if len(groups) != len(vectors):
+            raise ValueError(
+                f"CPI basket lists for {component.component_id!r} must be parallel equal length"
+            )
+        for group, vector in zip(groups, vectors, strict=True):
+            if not isinstance(group, str) or not group.strip():
+                raise ValueError(
+                    f"CPI basket product group for {component.component_id!r} "
+                    "must be a non empty string"
+                )
+            if not isinstance(vector, str) or not vector.strip():
+                raise ValueError(
+                    f"CPI basket vector for {component.component_id!r} must be a non empty string"
+                )
+            if group in seen_basket_products:
+                raise ValueError(f"duplicate CPI basket product group: {group!r}")
+            if vector in seen_basket_vectors:
+                raise ValueError(f"duplicate CPI basket vector id: {vector!r}")
+            seen_basket_products.add(group)
+            seen_basket_vectors.add(vector)
         specs.append(
             ComponentSpec(
                 component_id=component.component_id,
@@ -57,6 +86,8 @@ def specs_from_config(config: CpiConfig) -> tuple[ComponentSpec, ...]:
                 vector_id=component.vector_id,
                 weight_percent=component.weight_percent,
                 seasonally_adjusted=True,
+                basket_product_groups=groups,
+                basket_vector_ids=vectors,
             )
         )
     return tuple(specs)

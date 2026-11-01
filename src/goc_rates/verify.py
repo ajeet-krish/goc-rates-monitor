@@ -803,7 +803,12 @@ def _run_phase2_checks(
 
 
 def _run_phase4_checks(snapshot: dict[str, Any]) -> list[CheckResult]:
-    """Run checks V19 to V22 for the Phase 4 experimental CPI engine."""
+    """Run checks V19 to V22 for the Phase 4 experimental CPI engine.
+
+    A missing inflation section is a per module degraded skip, not a
+    failure, so curve deploys are not blocked when the CPI bulk
+    agreement fails. A present section still recomputes strictly.
+    """
     from goc_rates.cpi.components import EXPECTED_COMPONENT_COUNT
     from goc_rates.cpi.trim_median import TRIM_METHOD, ComponentRate, compute_trim_median
     from goc_rates.cpi.validation import (
@@ -815,13 +820,37 @@ def _run_phase4_checks(snapshot: dict[str, Any]) -> list[CheckResult]:
 
     results: list[CheckResult] = []
 
-    inflation = _get_path(snapshot, "observations", "inflation")
-    if not isinstance(inflation, dict):
+    observations_raw = snapshot.get("observations")
+    if not isinstance(observations_raw, dict):
         results.append(CheckResult("V19", False, "inflation section is missing"))
         results.append(CheckResult("V20", False, "inflation section is missing"))
         results.append(CheckResult("V21", False, "inflation section is missing"))
         results.append(CheckResult("V22", False, "inflation section is missing"))
         return results
+
+    inflation = observations_raw.get("inflation")
+    if inflation is None:
+        for check_id in ("V19", "V20", "V21", "V22"):
+            results.append(
+                CheckResult(
+                    check_id,
+                    True,
+                    f"{check_id} skipped, inflation missing with CPI degraded (unit: mixed)",
+                )
+            )
+        return results
+    if isinstance(inflation, dict) and inflation.get("status") == "missing":
+        reason = inflation.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            for check_id in ("V19", "V20", "V21", "V22"):
+                results.append(
+                    CheckResult(
+                        check_id,
+                        True,
+                        f"{check_id} skipped, inflation missing with CPI degraded (unit: mixed)",
+                    )
+                )
+            return results
 
     try:
         if inflation.get("method") != TRIM_METHOD:

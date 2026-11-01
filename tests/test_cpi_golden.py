@@ -19,9 +19,9 @@ def _golden_section() -> dict[str, object]:
     0.1 of B plus 0.5 of A over 0.6.
     """
     specs = [
-        ComponentSpec("A", "Alpha", "1", 50.0, True),
-        ComponentSpec("B", "Beta", "2", 30.0, True),
-        ComponentSpec("C", "Gamma", "3", 20.0, True),
+        ComponentSpec("A", "Alpha", "1", 50.0, True, ("Basket A",), ("11111111",)),
+        ComponentSpec("B", "Beta", "2", 30.0, True, ("Basket B",), ("22222222",)),
+        ComponentSpec("C", "Gamma", "3", 20.0, True, ("Basket C",), ("33333333",)),
     ]
     weights = {"A": 0.50, "B": 0.30, "C": 0.20}
     months: list[str] = []

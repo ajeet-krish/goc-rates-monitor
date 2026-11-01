@@ -1,6 +1,13 @@
 """Phase 4 CPI engine: trim, median, weights, bulk ingest, and validation."""
 
+from goc_rates.cpi.basket_map import (
+    aggregate_basket_weights,
+    check_basket_agreement,
+    component_tolerance,
+    normalize_product_group,
+)
 from goc_rates.cpi.bulk import (
+    BasketRow,
     BasketWeights,
     BulkMember,
     BulkTable,
@@ -68,6 +75,7 @@ __all__ = [
     "VALIDATION_WINDOW_MONTHS",
     "WEIGHT_SUM_TOLERANCE",
     "DERIVED_SOURCE",
+    "BasketRow",
     "BasketWeights",
     "BulkMember",
     "BulkTable",
@@ -77,10 +85,13 @@ __all__ = [
     "TrimMedianResult",
     "ValidationResult",
     "WeightVintage",
+    "aggregate_basket_weights",
     "annualized_from_monthly_percent",
     "assemble_bulk_table",
     "build_inflation_section",
     "build_inflation_section_from_bulk",
+    "check_basket_agreement",
+    "component_tolerance",
     "compound_annual_percent",
     "compute_trim_median",
     "contribution_pp",
@@ -91,6 +102,7 @@ __all__ = [
     "fetch_bulk_table",
     "load_component_specs",
     "month_over_month_percent",
+    "normalize_product_group",
     "normalize_weights",
     "specs_from_config",
     "total_contribution_pp",

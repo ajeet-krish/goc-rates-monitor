@@ -35,12 +35,20 @@ EXPECTED_BULK_PRODUCT_IDS: dict[str, int] = {
 
 _PRODUCT_ID_PATTERN = re.compile(r"^[1-9][0-9]{7}$")
 _VECTOR_ID_PATTERN = re.compile(r"^[0-9]{8}$")
+_BASKET_VECTOR_PATTERN = re.compile(r"^[0-9]{8}(?:[0-9]{2})?$")
+_BASKET_YEAR_PATTERN = re.compile(r"^(\d{4})(?:-\d{2}(?:-\d{2})?)?$")
 _MONTH_PATTERN = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])(?:-(\d{2}))?$")
+_BASKET_COORDINATE_PATTERN = re.compile(r"^[0-9]+(\.[0-9]+)*$")
 _MISSING_TOKENS = frozenset({"", ".", "..", "...", "na", "null"})
 _MAX_CSV_ROWS = 2_000_000
 _MEMBER_HASH_CHUNK_BYTES = 65536
 
 BASKET_WEIGHT_TOLERANCE_PP = 0.01
+
+BASKET_GEO_CANADA = "Canada"
+BASKET_PRICE_LINK_MONTH = "Weight at basket link month prices"
+BASKET_GEODIST_SELECTED = "Distribution to selected geographies"
+BASKET_UOM_PERCENT = "percent"
 
 
 @dataclass(frozen=True)
@@ -65,12 +73,23 @@ class BulkTable:
 
 
 @dataclass(frozen=True)
+class BasketRow:
+    """One retained basket vintage row: product group, vector, coordinate, weight."""
+
+    product: str
+    vector: str
+    coordinate: str
+    weight_percent: float
+
+
+@dataclass(frozen=True)
 class BasketWeights:
-    """Parsed basket weights: vintage plus vector weights in percent."""
+    """Parsed basket weights: vintage plus vector weights and retained rows."""
 
     expenditure_year: int
     link_month: str
     weights_percent: dict[str, float]
+    rows: tuple[BasketRow, ...]
 
 
 def _check_product_id(product_id: int) -> int:
@@ -362,17 +381,53 @@ def extract_component_months(
     return result
 
 
+def _basket_row_year(text: str, row_number: int) -> int:
+    """Return the expenditure year for a basket REF_DATE cell, else raise."""
+    cleaned = text.strip()
+    match = _BASKET_YEAR_PATTERN.match(cleaned)
+    if match is None:
+        raise ValueError(f"basket CSV row {row_number} has an invalid REF_DATE year: {text!r}")
+    return int(match.group(1))
+
+
+def _check_basket_vintage_params(expenditure_year: int, link_month: str) -> str:
+    """Validate the requested basket vintage, returning the link month."""
+    if isinstance(expenditure_year, bool) or not isinstance(expenditure_year, int):
+        raise ValueError("expenditure_year must be an integer")
+    if expenditure_year < 1000 or expenditure_year > 9999:
+        raise ValueError(f"expenditure_year must be a 4 digit year, got {expenditure_year!r}")
+    match = _MONTH_PATTERN.match(link_month.strip())
+    if match is None:
+        raise ValueError(f"link_month must be YYYY-MM, got {link_month!r}")
+    return f"{match.group(1)}-{match.group(2)}"
+
+
 def extract_basket_weights(
     zip_bytes: bytes,
+    *,
+    expenditure_year: int,
+    link_month: str,
 ) -> BasketWeights:
     """Parse the basket weights member from a bulk zip, streaming rows.
 
-    The basket member (a name containing basket or weight wins, else the
-    largest CSV) must carry VECTOR, WEIGHT_PERCENT (or VALUE), plus the
-    EXPENDITURE_YEAR and LINK_MONTH vintage. Every row must share one
-    vintage, every weight must be a positive finite percent, and nothing
-    is written to disk. Any drift fails closed.
+    Live table 18100007 carries no EXPENDITURE_YEAR or LINK_MONTH columns.
+    Its actual columns are REF_DATE, GEO, DGUID, Products and product groups,
+    Price period of weight, Geographic distribution of weight, UOM, UOM_ID,
+    SCALAR_FACTOR, SCALAR_ID, VECTOR, COORDINATE, VALUE, STATUS, SYMBOL,
+    TERMINATED, and DECIMALS. REF_DATE holds the expenditure year (YYYY),
+    VALUE holds the weight in percent, and the requested vintage slice is
+    GEO Canada at basket link month prices. The link month itself is not
+    recorded in the member, so the caller passes the pinned link month
+    (registry vintage) and it is carried on the result for provenance.
+    Every kept row must use a percent unit, every weight must be a present
+    positive finite percent, every basket vector must be an 8 digit classic
+    id or a 10 digit extended StatCan id, every coordinate must match
+    ^[0-9]+(\\.[0-9]+)*$, and nothing is written to disk. Duplicate
+    products, vectors, or coordinates each fail closed. Rows are retained
+    with product, vector, coordinate, and weight for basket mapping.
+    An empty vintage slice or any drift fails closed.
     """
+    normalized_link = _check_basket_vintage_params(expenditure_year, link_month)
     try:
         archive = zipfile.ZipFile(io.BytesIO(zip_bytes))
     except zipfile.BadZipFile:
@@ -396,27 +451,51 @@ def extract_basket_weights(
             if reader.fieldnames is None:
                 raise ValueError("basket member holds no header row")
             header_map = {name.strip().upper(): name for name in reader.fieldnames}
+            ref_key = _resolve_header_key(
+                header_map,
+                ("REF_DATE", "REFERENCE_DATE", "REFERENCE_PERIOD"),
+                "REF_DATE",
+            )
+            geo_key = _resolve_header_key(
+                header_map,
+                ("GEO", "GEOGRAPHY", "REGION"),
+                "GEO",
+            )
+            product_key = _resolve_header_key(
+                header_map,
+                ("PRODUCTS AND PRODUCT GROUPS", "PRODUCT", "PRODUCT_GROUP"),
+                "PRODUCTS AND PRODUCT GROUPS",
+            )
+            price_key = _resolve_header_key(
+                header_map,
+                ("PRICE PERIOD OF WEIGHT", "PRICE_PERIOD", "WEIGHT_TYPE"),
+                "PRICE PERIOD OF WEIGHT",
+            )
+            geodist_key = _resolve_header_key(
+                header_map,
+                ("GEOGRAPHIC DISTRIBUTION OF WEIGHT", "GEOGRAPHY_DISTRIBUTION"),
+                "GEOGRAPHIC DISTRIBUTION OF WEIGHT",
+            )
+            uom_key = _resolve_header_key(
+                header_map,
+                ("UOM", "UOM_EN", "UNIT"),
+                "UOM",
+            )
             vector_key = _resolve_header_key(
                 header_map, ("VECTOR", "VECTOR_ID", "VECTORID"), "VECTOR"
             )
+            coordinate_key = _resolve_header_key(header_map, ("COORDINATE", "COORD"), "COORDINATE")
             weight_key = _resolve_header_key(
                 header_map,
-                ("WEIGHT_PERCENT", "WEIGHT", "VALUE", "BASKET_WEIGHT"),
-                "WEIGHT_PERCENT",
-            )
-            expenditure_key = _resolve_header_key(
-                header_map,
-                ("EXPENDITURE_YEAR", "EXPENDITURE", "BASKET_YEAR", "WEIGHT_YEAR"),
-                "EXPENDITURE_YEAR",
-            )
-            link_key = _resolve_header_key(
-                header_map,
-                ("LINK_MONTH", "LINK", "REF_DATE", "BASKET_LINK"),
-                "LINK_MONTH",
+                ("VALUE", "VALEUR", "WEIGHT_PERCENT", "WEIGHT", "BASKET_WEIGHT"),
+                "VALUE",
             )
             weights: dict[str, float] = {}
-            expenditure_year: int | None = None
-            link_month: str | None = None
+            rows: list[BasketRow] = []
+            seen_products: set[str] = set()
+            seen_vectors: set[str] = set()
+            seen_coordinates: set[str] = set()
+            seen_years: set[str] = set()
             row_number = 0
             for row in reader:
                 row_number += 1
@@ -424,16 +503,61 @@ def extract_basket_weights(
                     raise ValueError(f"basket member exceeds the {_MAX_CSV_ROWS} row cap")
                 if not isinstance(row, dict):
                     raise ValueError(f"basket CSV row {row_number} must be a mapping")
+                year = _basket_row_year(str(row.get(ref_key, "")), row_number)
+                seen_years.add(str(row.get(ref_key, "")).strip())
+                if year != expenditure_year:
+                    continue
+                if str(row.get(geo_key, "")).strip().casefold() != BASKET_GEO_CANADA.casefold():
+                    continue
+                if (
+                    str(row.get(price_key, "")).strip().casefold()
+                    != BASKET_PRICE_LINK_MONTH.casefold()
+                ):
+                    continue
+                if (
+                    str(row.get(geodist_key, "")).strip().casefold()
+                    != BASKET_GEODIST_SELECTED.casefold()
+                ):
+                    continue
+                product = str(row.get(product_key, "")).strip()
+                if not product:
+                    raise ValueError(f"basket CSV row {row_number} is missing its product group")
+                if product in seen_products:
+                    raise ValueError(
+                        f"basket CSV row {row_number} repeats product group {product!r}"
+                    )
+                unit_text = str(row.get(uom_key, "")).strip()
+                if unit_text.casefold() != BASKET_UOM_PERCENT:
+                    raise ValueError(
+                        f"basket CSV row {row_number} unit {unit_text!r} is not a percent weight"
+                    )
                 vector = _normalize_vector(str(row.get(vector_key, "")))
                 if not vector:
                     raise ValueError(f"basket CSV row {row_number} is missing its vector")
-                if not _VECTOR_ID_PATTERN.match(vector):
+                if not _BASKET_VECTOR_PATTERN.match(vector):
                     raise ValueError(
-                        f"basket CSV row {row_number} vector {vector!r} must be an 8 digit id"
+                        f"basket CSV row {row_number} vector {vector!r} "
+                        "must be an 8 digit classic id or a 10 digit extended id"
                     )
                 if vector in weights:
                     raise ValueError(f"basket CSV row {row_number} repeats vector {vector!r}")
+                coordinate = str(row.get(coordinate_key, "")).strip()
+                if not coordinate:
+                    raise ValueError(f"basket CSV row {row_number} is missing its coordinate")
+                if not _BASKET_COORDINATE_PATTERN.match(coordinate):
+                    raise ValueError(
+                        f"basket CSV row {row_number} coordinate {coordinate!r} "
+                        "must match ^[0-9]+(\\.[0-9]+)*$"
+                    )
+                if coordinate in seen_coordinates:
+                    raise ValueError(
+                        f"basket CSV row {row_number} repeats coordinate {coordinate!r}"
+                    )
                 raw_weight = str(row.get(weight_key, "")).strip()
+                if raw_weight.lower() in _MISSING_TOKENS:
+                    raise ValueError(
+                        f"basket CSV row {row_number} has a missing weight for {product!r}"
+                    )
                 try:
                     weight = float(raw_weight)
                 except ValueError:
@@ -444,35 +568,29 @@ def extract_basket_weights(
                     raise ValueError(f"basket CSV row {row_number} weight must be finite")
                 if weight <= 0.0:
                     raise ValueError(f"basket CSV row {row_number} weight must be positive")
-                raw_year = str(row.get(expenditure_key, "")).strip()
-                try:
-                    year = int(raw_year)
-                except ValueError:
-                    raise ValueError(
-                        f"basket CSV row {row_number} has an invalid expenditure year: {raw_year!r}"
-                    ) from None
-                raw_link = str(row.get(link_key, "")).strip()
-                match = _MONTH_PATTERN.match(raw_link)
-                if match is None:
-                    raise ValueError(
-                        f"basket CSV row {row_number} has an invalid link month: {raw_link!r}"
-                    )
-                normalized_link = f"{match.group(1)}-{match.group(2)}"
-                if expenditure_year is None:
-                    expenditure_year = year
-                    link_month = normalized_link
-                elif year != expenditure_year or normalized_link != link_month:
-                    raise ValueError(
-                        f"basket CSV row {row_number} vintage {year}/{normalized_link} "
-                        f"disagrees with {expenditure_year}/{link_month}"
-                    )
                 weights[vector] = weight
-            if expenditure_year is None or link_month is None or not weights:
-                raise ValueError("basket member holds no weight rows")
+                seen_products.add(product)
+                seen_vectors.add(vector)
+                seen_coordinates.add(coordinate)
+                rows.append(
+                    BasketRow(
+                        product=product,
+                        vector=vector,
+                        coordinate=coordinate,
+                        weight_percent=weight,
+                    )
+                )
+            if not weights:
+                sample = sorted(seen_years)[:10]
+                raise ValueError(
+                    f"basket member holds no rows for expenditure year {expenditure_year} "
+                    f"(saw REF_DATE values {sample})"
+                )
             return BasketWeights(
                 expenditure_year=expenditure_year,
-                link_month=link_month,
+                link_month=normalized_link,
                 weights_percent=dict(weights),
+                rows=tuple(rows),
             )
 
 

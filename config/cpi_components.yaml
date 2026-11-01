@@ -1,299 +1,1311 @@
-# CPI component registry: 55 component disaggregation with pinned basket weights.
+# CPI component registry: 55 component disaggregation with pinned basket mapping (schema 2).
 #
-# Spike: StatCan bulk getFullTableDownloadCSV for productIds 1810000401
-# (CPI monthly), 1810025601 (core statistics), and 1810000701 (basket
-# weights). The zip is streamed in memory with byte caps, member names are
-# listed without extraction, and each member is hashed. The 55 seasonally
-# adjusted component series plus the weight vintage below were discovered
-# from the bulk members and are pinned here. Weight vintage: 2024
-# expenditure weights, link month 2025-05, provisional until the bulk
-# metadata confirms the basket. Any drift between this registry and the
-# bulk metadata fails closed.
-schema_version: 1
+# Spike: StatCan bulk getFullTableDownloadCSV for productIds 18100004, 18100256, and 18100007
+# (eight digit product ids). The 55 seasonally adjusted component series plus the weight vintage below were
+# discovered from the bulk members and are pinned here. Weight vintage: 2024 expenditure weights,
+# link month 2025-05, provisional true until the live basket mapped run passes all 55. Live 18100007
+# 2024 Canada link month prices percent slice holds 329 rows. Meat maps one to many to six cuts summing
+# to 1.87 link (1.83 ref) against registry 2.40 for a 0.53 link (0.57 ref) shortfall that fails closed.
+# Rent 7.35 link (7.19 ref) and Mortgage 5.65 ref map one to one. Basket vectors are 8 digit classic plus
+# 10 digit extended ids with coordinates retained. Any drift between the registry and the bulk
+# metadata fails closed.
+schema_version: 2
 weight_vintage:
   expenditure_year: 2024
-  link_month: "2025-05"
+  link_month: 2025-05
   provisional: true
 product_ids:
   cpi_monthly: 18100004
   core_statistics: 18100256
   basket_weights: 18100007
 published:
-  trim_index_vector_id: "41691028"
-  median_index_vector_id: "41691029"
+  trim_index_vector_id: '41691028'
+  median_index_vector_id: '41691029'
 components:
-  - component_id: C01
-    label: Meat
-    vector_id: "41690973"
-    weight_percent: 2.40
-    seasonally_adjusted: true
-  - component_id: C02
-    label: Fish and seafood
-    vector_id: "41690974"
-    weight_percent: 0.70
-    seasonally_adjusted: true
-  - component_id: C03
-    label: Dairy products and eggs
-    vector_id: "41690975"
-    weight_percent: 1.70
-    seasonally_adjusted: true
-  - component_id: C04
-    label: Bakery and cereal products
-    vector_id: "41690976"
-    weight_percent: 1.80
-    seasonally_adjusted: true
-  - component_id: C05
-    label: Fruit and nuts
-    vector_id: "41690977"
-    weight_percent: 1.50
-    seasonally_adjusted: true
-  - component_id: C06
-    label: Vegetables
-    vector_id: "41690978"
-    weight_percent: 1.70
-    seasonally_adjusted: true
-  - component_id: C07
-    label: Other food at home
-    vector_id: "41690979"
-    weight_percent: 2.10
-    seasonally_adjusted: true
-  - component_id: C08
-    label: Coffee tea and beverages
-    vector_id: "41690980"
-    weight_percent: 0.90
-    seasonally_adjusted: true
-  - component_id: C09
-    label: Food from restaurants
-    vector_id: "41690981"
-    weight_percent: 3.92
-    seasonally_adjusted: true
-  - component_id: C10
-    label: Rent
-    vector_id: "41690982"
-    weight_percent: 7.19
-    seasonally_adjusted: true
-  - component_id: C11
-    label: Mortgage interest cost
-    vector_id: "41690983"
-    weight_percent: 5.65
-    seasonally_adjusted: true
-  - component_id: C12
-    label: Replacement cost
-    vector_id: "41690984"
-    weight_percent: 4.40
-    seasonally_adjusted: true
-  - component_id: C13
-    label: Property taxes
-    vector_id: "41690985"
-    weight_percent: 2.70
-    seasonally_adjusted: true
-  - component_id: C14
-    label: Homeowners insurance
-    vector_id: "41690986"
-    weight_percent: 1.40
-    seasonally_adjusted: true
-  - component_id: C15
-    label: Maintenance and repairs
-    vector_id: "41690987"
-    weight_percent: 1.70
-    seasonally_adjusted: true
-  - component_id: C16
-    label: Other owned accommodation
-    vector_id: "41690988"
-    weight_percent: 1.50
-    seasonally_adjusted: true
-  - component_id: C17
-    label: Electricity
-    vector_id: "41690989"
-    weight_percent: 2.10
-    seasonally_adjusted: true
-  - component_id: C18
-    label: Natural gas
-    vector_id: "41690990"
-    weight_percent: 1.00
-    seasonally_adjusted: true
-  - component_id: C19
-    label: Fuel oil and other fuels
-    vector_id: "41690991"
-    weight_percent: 0.48
-    seasonally_adjusted: true
-  - component_id: C20
-    label: Water sewage and waste
-    vector_id: "41690992"
-    weight_percent: 1.00
-    seasonally_adjusted: true
-  - component_id: C21
-    label: Furniture
-    vector_id: "41690993"
-    weight_percent: 1.10
-    seasonally_adjusted: true
-  - component_id: C22
-    label: Appliances and tools
-    vector_id: "41690994"
-    weight_percent: 0.80
-    seasonally_adjusted: true
-  - component_id: C23
-    label: Household supplies
-    vector_id: "41690995"
-    weight_percent: 1.90
-    seasonally_adjusted: true
-  - component_id: C24
-    label: Communications
-    vector_id: "41690996"
-    weight_percent: 2.50
-    seasonally_adjusted: true
-  - component_id: C25
-    label: Internet and cellular
-    vector_id: "41690997"
-    weight_percent: 1.90
-    seasonally_adjusted: true
-  - component_id: C26
-    label: Childcare and household services
-    vector_id: "41690998"
-    weight_percent: 2.30
-    seasonally_adjusted: true
-  - component_id: C27
-    label: Clothing
-    vector_id: "41690999"
-    weight_percent: 2.30
-    seasonally_adjusted: true
-  - component_id: C28
-    label: Footwear
-    vector_id: "41691000"
-    weight_percent: 0.90
-    seasonally_adjusted: true
-  - component_id: C29
-    label: Clothing accessories
-    vector_id: "41691001"
-    weight_percent: 0.50
-    seasonally_adjusted: true
-  - component_id: C30
-    label: Laundry services
-    vector_id: "41691002"
-    weight_percent: 0.30
-    seasonally_adjusted: true
-  - component_id: C31
-    label: Private vehicle purchase
-    vector_id: "41691003"
-    weight_percent: 4.30
-    seasonally_adjusted: true
-  - component_id: C32
-    label: Gasoline
-    vector_id: "41691004"
-    weight_percent: 3.40
-    seasonally_adjusted: true
-  - component_id: C33
-    label: Auto insurance premiums
-    vector_id: "41691005"
-    weight_percent: 2.10
-    seasonally_adjusted: true
-  - component_id: C34
-    label: Vehicle maintenance
-    vector_id: "41691006"
-    weight_percent: 1.40
-    seasonally_adjusted: true
-  - component_id: C35
-    label: Public transit
-    vector_id: "41691007"
-    weight_percent: 1.10
-    seasonally_adjusted: true
-  - component_id: C36
-    label: Air transportation
-    vector_id: "41691008"
-    weight_percent: 0.90
-    seasonally_adjusted: true
-  - component_id: C37
-    label: Other transport services
-    vector_id: "41691009"
-    weight_percent: 2.60
-    seasonally_adjusted: true
-  - component_id: C38
-    label: Rental and leasing of passenger vehicles
-    vector_id: "41691010"
-    weight_percent: 0.60
-    seasonally_adjusted: true
-  - component_id: C39
-    label: Intercity and other transport
-    vector_id: "41691011"
-    weight_percent: 0.89
-    seasonally_adjusted: true
-  - component_id: C40
-    label: Health care services
-    vector_id: "41691012"
-    weight_percent: 2.60
-    seasonally_adjusted: true
-  - component_id: C41
-    label: Medicines and pharmaceuticals
-    vector_id: "41691013"
-    weight_percent: 1.00
-    seasonally_adjusted: true
-  - component_id: C42
-    label: Personal care supplies
-    vector_id: "41691014"
-    weight_percent: 1.20
-    seasonally_adjusted: true
-  - component_id: C43
-    label: Personal care services
-    vector_id: "41691015"
-    weight_percent: 1.30
-    seasonally_adjusted: true
-  - component_id: C44
-    label: Recreation goods
-    vector_id: "41691016"
-    weight_percent: 1.60
-    seasonally_adjusted: true
-  - component_id: C45
-    label: Recreation services
-    vector_id: "41691017"
-    weight_percent: 3.20
-    seasonally_adjusted: true
-  - component_id: C46
-    label: Education and tuition
-    vector_id: "41691018"
-    weight_percent: 2.80
-    seasonally_adjusted: true
-  - component_id: C47
-    label: Reading material
-    vector_id: "41691019"
-    weight_percent: 0.30
-    seasonally_adjusted: true
-  - component_id: C48
-    label: Travel accommodation
-    vector_id: "41691020"
-    weight_percent: 1.00
-    seasonally_adjusted: true
-  - component_id: C49
-    label: Toys games and hobby
-    vector_id: "41691021"
-    weight_percent: 0.80
-    seasonally_adjusted: true
-  - component_id: C50
-    label: Sporting goods
-    vector_id: "41691022"
-    weight_percent: 0.50
-    seasonally_adjusted: true
-  - component_id: C51
-    label: Entertainment and streaming
-    vector_id: "41691023"
-    weight_percent: 0.60
-    seasonally_adjusted: true
-  - component_id: C52
-    label: Alcohol from stores
-    vector_id: "41691024"
-    weight_percent: 2.00
-    seasonally_adjusted: true
-  - component_id: C53
-    label: Alcohol in licensed establishments
-    vector_id: "41691025"
-    weight_percent: 0.80
-    seasonally_adjusted: true
-  - component_id: C54
-    label: Tobacco and cigarettes
-    vector_id: "41691026"
-    weight_percent: 1.90
-    seasonally_adjusted: true
-  - component_id: C55
-    label: Cannabis products
-    vector_id: "41691027"
-    weight_percent: 0.77
-    seasonally_adjusted: true
+- component_id: C01
+  label: Meat
+  vector_id: '41690973'
+  weight_percent: 2.4
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Fresh or frozen beef
+  - Fresh or frozen pork
+  - Other fresh or frozen meat (excluding poultry)
+  - Fresh or frozen chicken
+  - Other fresh or frozen poultry
+  - Processed meat
+  basket_vector_ids:
+  - '91858748'
+  - '91858750'
+  - '91858752'
+  - '91858756'
+  - '91858758'
+  - '91858760'
+- component_id: C02
+  label: Fish and seafood
+  vector_id: '41690974'
+  weight_percent: 0.7
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Fish, seafood and other marine products
+  basket_vector_ids:
+  - '91858766'
+- component_id: C03
+  label: Dairy products and eggs
+  vector_id: '41690975'
+  weight_percent: 1.7
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Dairy products and eggs
+  basket_vector_ids:
+  - '91858776'
+- component_id: C04
+  label: Bakery and cereal products
+  vector_id: '41690976'
+  weight_percent: 1.8
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Bakery and cereal products (excluding baby food)
+  basket_vector_ids:
+  - '91858792'
+- component_id: C05
+  label: Fruit and nuts
+  vector_id: '41690977'
+  weight_percent: 1.5
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Fruit, fruit preparations and nuts
+  basket_vector_ids:
+  - '91858812'
+- component_id: C06
+  label: Vegetables
+  vector_id: '41690978'
+  weight_percent: 1.7
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Vegetables and vegetable preparations
+  basket_vector_ids:
+  - '91858832'
+- component_id: C07
+  label: Other food at home
+  vector_id: '41690979'
+  weight_percent: 2.1
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Sugar and confectionery
+  - Edible fats and oils
+  - Condiments, spices and vinegars
+  - Other food preparations
+  basket_vector_ids:
+  - '91858852'
+  - '91858858'
+  - '91858870'
+  - '91858872'
+- component_id: C08
+  label: Coffee tea and beverages
+  vector_id: '41690980'
+  weight_percent: 0.9
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Coffee and tea
+  - Non-alcoholic beverages
+  basket_vector_ids:
+  - '91858864'
+  - '91858882'
+- component_id: C09
+  label: Food from restaurants
+  vector_id: '41690981'
+  weight_percent: 3.92
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Food purchased from restaurants
+  basket_vector_ids:
+  - '91858884'
+- component_id: C10
+  label: Rent
+  vector_id: '41690982'
+  weight_percent: 7.19
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Rent
+  basket_vector_ids:
+  - '91858896'
+- component_id: C11
+  label: Mortgage interest cost
+  vector_id: '41690983'
+  weight_percent: 5.65
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Mortgage interest cost
+  basket_vector_ids:
+  - '91858904'
+- component_id: C12
+  label: Replacement cost
+  vector_id: '41690984'
+  weight_percent: 4.4
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Homeowners' replacement cost
+  basket_vector_ids:
+  - '91858906'
+- component_id: C13
+  label: Property taxes
+  vector_id: '41690985'
+  weight_percent: 2.7
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Property taxes and other special charges
+  basket_vector_ids:
+  - '91858908'
+- component_id: C14
+  label: Homeowners insurance
+  vector_id: '41690986'
+  weight_percent: 1.4
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Homeowners' home and mortgage insurance
+  - Tenants' insurance premiums
+  basket_vector_ids:
+  - '91858910'
+  - '91858898'
+- component_id: C15
+  label: Maintenance and repairs
+  vector_id: '41690987'
+  weight_percent: 1.7
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Homeowners' maintenance and repairs
+  - Tenants' maintenance, repairs and other expenses
+  basket_vector_ids:
+  - '91858912'
+  - '91858900'
+- component_id: C16
+  label: Other owned accommodation
+  vector_id: '41690988'
+  weight_percent: 1.5
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Other owned accommodation expenses
+  basket_vector_ids:
+  - '91858914'
+- component_id: C17
+  label: Electricity
+  vector_id: '41690989'
+  weight_percent: 2.1
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Electricity
+  basket_vector_ids:
+  - '91858918'
+- component_id: C18
+  label: Natural gas
+  vector_id: '41690990'
+  weight_percent: 1.0
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Natural gas
+  basket_vector_ids:
+  - '91858922'
+- component_id: C19
+  label: Fuel oil and other fuels
+  vector_id: '41690991'
+  weight_percent: 0.48
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Fuel oil and other fuels
+  basket_vector_ids:
+  - '91858924'
+- component_id: C20
+  label: Water sewage and waste
+  vector_id: '41690992'
+  weight_percent: 1.0
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Water
+  basket_vector_ids:
+  - '91858920'
+- component_id: C21
+  label: Furniture
+  vector_id: '41690993'
+  weight_percent: 1.1
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Furniture
+  basket_vector_ids:
+  - '91858976'
+- component_id: C22
+  label: Appliances and tools
+  vector_id: '41690994'
+  weight_percent: 0.8
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Household appliances
+  basket_vector_ids:
+  - '91858994'
+- component_id: C23
+  label: Household supplies
+  vector_id: '41690995'
+  weight_percent: 1.9
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Household cleaning products
+  - Paper, plastic and aluminum foil supplies
+  - Pet food and supplies
+  - Seeds, plants and cut flowers
+  - Other household supplies
+  basket_vector_ids:
+  - '91858946'
+  - '91858952'
+  - '91858960'
+  - '91858962'
+  - '91858966'
+- component_id: C24
+  label: Communications
+  vector_id: '41690996'
+  weight_percent: 2.5
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Communications
+  basket_vector_ids:
+  - '91858930'
+- component_id: C25
+  label: Internet and cellular
+  vector_id: '41690997'
+  weight_percent: 1.9
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Internet access services
+  - Cellular services
+  basket_vector_ids:
+  - '91858936'
+  - '1277763709'
+- component_id: C26
+  label: Childcare and household services
+  vector_id: '41690998'
+  weight_percent: 2.3
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Child care and housekeeping services
+  - Other household services
+  basket_vector_ids:
+  - '91858940'
+  - '91858968'
+- component_id: C27
+  label: Clothing
+  vector_id: '41690999'
+  weight_percent: 2.3
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Clothing
+  basket_vector_ids:
+  - '91859018'
+- component_id: C28
+  label: Footwear
+  vector_id: '41691000'
+  weight_percent: 0.9
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Footwear
+  basket_vector_ids:
+  - '91859026'
+- component_id: C29
+  label: Clothing accessories
+  vector_id: '41691001'
+  weight_percent: 0.5
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Clothing accessories, watches and jewellery
+  basket_vector_ids:
+  - '91859036'
+- component_id: C30
+  label: Laundry services
+  vector_id: '41691002'
+  weight_percent: 0.3
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Clothing material, notions and services
+  basket_vector_ids:
+  - '91859046'
+- component_id: C31
+  label: Private vehicle purchase
+  vector_id: '41691003'
+  weight_percent: 4.3
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Purchase of new passenger vehicles
+  - Purchase of used passenger vehicles
+  basket_vector_ids:
+  - '1374970431'
+  - '1374970433'
+- component_id: C32
+  label: Gasoline
+  vector_id: '41691004'
+  weight_percent: 3.4
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Gasoline
+  basket_vector_ids:
+  - '91859072'
+- component_id: C33
+  label: Auto insurance premiums
+  vector_id: '41691005'
+  weight_percent: 2.1
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Passenger vehicle insurance premiums
+  basket_vector_ids:
+  - '91859082'
+- component_id: C34
+  label: Vehicle maintenance
+  vector_id: '41691006'
+  weight_percent: 1.4
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Passenger vehicle maintenance and repair services
+  basket_vector_ids:
+  - '91859078'
+- component_id: C35
+  label: Public transit
+  vector_id: '41691007'
+  weight_percent: 1.1
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Public transportation
+  basket_vector_ids:
+  - '91859092'
+- component_id: C36
+  label: Air transportation
+  vector_id: '41691008'
+  weight_percent: 0.9
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Air transportation
+  basket_vector_ids:
+  - '91859102'
+- component_id: C37
+  label: Other transport services
+  vector_id: '41691009'
+  weight_percent: 2.6
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Other passenger vehicle operating expenses
+  basket_vector_ids:
+  - '91859080'
+- component_id: C38
+  label: Rental and leasing of passenger vehicles
+  vector_id: '41691010'
+  weight_percent: 0.6
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Leasing of passenger vehicles
+  - Rental of passenger vehicles
+  basket_vector_ids:
+  - '91859066'
+  - '91859068'
+- component_id: C39
+  label: Intercity and other transport
+  vector_id: '41691011'
+  weight_percent: 0.89
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Local and commuter transportation
+  - Inter-city transportation
+  - Rail, highway bus and other inter-city transportation
+  - Other public transportation
+  basket_vector_ids:
+  - '91859094'
+  - '91859100'
+  - '91859104'
+  - '95701003'
+- component_id: C40
+  label: Health care services
+  vector_id: '41691012'
+  weight_percent: 2.6
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Health care
+  basket_vector_ids:
+  - '91859108'
+- component_id: C41
+  label: Medicines and pharmaceuticals
+  vector_id: '41691013'
+  weight_percent: 1.0
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Medicinal and pharmaceutical products
+  basket_vector_ids:
+  - '91859112'
+- component_id: C42
+  label: Personal care supplies
+  vector_id: '41691014'
+  weight_percent: 1.2
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Toiletry items and cosmetics
+  - Oral-hygiene products
+  basket_vector_ids:
+  - '91859136'
+  - '91859138'
+- component_id: C43
+  label: Personal care services
+  vector_id: '41691015'
+  weight_percent: 1.3
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Personal care services
+  basket_vector_ids:
+  - '91859142'
+- component_id: C44
+  label: Recreation goods
+  vector_id: '41691016'
+  weight_percent: 1.6
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Digital computing equipment and devices
+  - Computer equipment, software and supplies
+  - Multipurpose digital devices
+  - Photographic equipment and supplies
+  - Other recreational equipment
+  basket_vector_ids:
+  - '91859154'
+  - '91859156'
+  - '91859158'
+  - '91859160'
+  - '91859162'
+- component_id: C45
+  label: Recreation services
+  vector_id: '41691017'
+  weight_percent: 3.2
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Purchase and operation of recreational vehicles
+  - Home entertainment equipment, parts and services
+  - Other cultural and recreational services
+  basket_vector_ids:
+  - '91859166'
+  - '91859176'
+  - '91859194'
+- component_id: C46
+  label: Education and tuition
+  vector_id: '41691018'
+  weight_percent: 2.8
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Tuition fees
+  - School textbooks and supplies
+  - Other lessons, courses and education services
+  basket_vector_ids:
+  - '91859206'
+  - '91859208'
+  - '91859210'
+- component_id: C47
+  label: Reading material
+  vector_id: '41691019'
+  weight_percent: 0.3
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Reading material (excluding textbooks)
+  basket_vector_ids:
+  - '91859212'
+- component_id: C48
+  label: Travel accommodation
+  vector_id: '41691020'
+  weight_percent: 1.0
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Traveller accommodation
+  basket_vector_ids:
+  - '91859190'
+- component_id: C49
+  label: Toys games and hobby
+  vector_id: '41691021'
+  weight_percent: 0.8
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Toys, games (excluding video games) and hobby supplies
+  basket_vector_ids:
+  - '91859152'
+- component_id: C50
+  label: Sporting goods
+  vector_id: '41691022'
+  weight_percent: 0.5
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Sporting and exercise equipment
+  basket_vector_ids:
+  - '91859150'
+- component_id: C51
+  label: Entertainment and streaming
+  vector_id: '41691023'
+  weight_percent: 0.6
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Video and audio subscription services
+  basket_vector_ids:
+  - '91859198'
+- component_id: C52
+  label: Alcohol from stores
+  vector_id: '41691024'
+  weight_percent: 2.0
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Alcoholic beverages purchased from stores
+  basket_vector_ids:
+  - '91859232'
+- component_id: C53
+  label: Alcohol in licensed establishments
+  vector_id: '41691025'
+  weight_percent: 0.8
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Alcoholic beverages served in licensed establishments
+  basket_vector_ids:
+  - '91859224'
+- component_id: C54
+  label: Tobacco and cigarettes
+  vector_id: '41691026'
+  weight_percent: 1.9
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Tobacco products and smokers' supplies
+  basket_vector_ids:
+  - '91859240'
+- component_id: C55
+  label: Cannabis products
+  vector_id: '41691027'
+  weight_percent: 0.77
+  seasonally_adjusted: true
+  basket_product_groups:
+  - Recreational cannabis
+  - Medicinal cannabis
+  basket_vector_ids:
+  - '1043024344'
+  - '1043024342'
+basket_exclusions:
+- product_group: Alcoholic beverages
+  vector_id: '91859222'
+  reason: aggregate
+- product_group: Alcoholic beverages, tobacco products and recreational cannabis
+  vector_id: '91859220'
+  reason: aggregate
+- product_group: All other cultural and recreational services
+  vector_id: '95701005'
+  reason: aggregate
+- product_group: All other food preparations
+  vector_id: '91858880'
+  reason: aggregate
+- product_group: All other miscellaneous food preparations
+  vector_id: '1563916503'
+  reason: aggregate
+- product_group: All other passenger vehicle operating expenses
+  vector_id: '91859090'
+  reason: aggregate
+- product_group: All-items
+  vector_id: '91858736'
+  reason: special_aggregate
+- product_group: All-items excluding alcoholic beverages, tobacco products and smokers'
+    supplies and recreational cannabis
+  vector_id: '91859252'
+  reason: special_aggregate
+- product_group: All-items excluding energy
+  vector_id: '91859260'
+  reason: special_aggregate
+- product_group: All-items excluding food
+  vector_id: '91859246'
+  reason: special_aggregate
+- product_group: All-items excluding food and energy
+  vector_id: '91859248'
+  reason: special_aggregate
+- product_group: All-items excluding gasoline
+  vector_id: '91859262'
+  reason: special_aggregate
+- product_group: All-items excluding mortgage interest cost
+  vector_id: '91859250'
+  reason: special_aggregate
+- product_group: All-items excluding shelter
+  vector_id: '91859258'
+  reason: special_aggregate
+- product_group: Apples
+  vector_id: '91858816'
+  reason: aggregate
+- product_group: Athletic footwear
+  vector_id: '91859034'
+  reason: aggregate
+- product_group: Audio equipment
+  vector_id: '91859178'
+  reason: aggregate
+- product_group: Baby foods
+  vector_id: '91858876'
+  reason: aggregate
+- product_group: Bacon
+  vector_id: '1563916465'
+  reason: aggregate
+- product_group: Bakery products
+  vector_id: '91858794'
+  reason: aggregate
+- product_group: Bananas
+  vector_id: '91858820'
+  reason: aggregate
+- product_group: Bedding and other household textiles
+  vector_id: '91858988'
+  reason: aggregate
+- product_group: Beer purchased from stores
+  vector_id: '91859234'
+  reason: aggregate
+- product_group: Beer served in licensed establishments
+  vector_id: '91859226'
+  reason: aggregate
+- product_group: Berries (including cherries)
+  vector_id: '1563916487'
+  reason: aggregate
+- product_group: Bleach and other household chemical products
+  vector_id: '1563916507'
+  reason: aggregate
+- product_group: Books and reading material (excluding textbooks)
+  vector_id: '91859218'
+  reason: special_aggregate
+- product_group: Bread, rolls and buns
+  vector_id: '91858796'
+  reason: aggregate
+- product_group: Breakfast cereal and other cereal products (excluding baby food)
+  vector_id: '91858806'
+  reason: special_aggregate
+- product_group: Butter
+  vector_id: '91858782'
+  reason: aggregate
+- product_group: Canned and other preserved fish
+  vector_id: '91858772'
+  reason: aggregate
+- product_group: Canned fruit
+  vector_id: '1563916488'
+  reason: aggregate
+- product_group: Canned infant or junior foods
+  vector_id: '1563916499'
+  reason: aggregate
+- product_group: Canned salmon
+  vector_id: '1563916469'
+  reason: aggregate
+- product_group: Canned tuna
+  vector_id: '1563916471'
+  reason: aggregate
+- product_group: Canned vegetables and other vegetable preparations
+  vector_id: '91858848'
+  reason: aggregate
+- product_group: Carrots
+  vector_id: '1563916492'
+  reason: aggregate
+- product_group: Cereal products (excluding baby food)
+  vector_id: '91858802'
+  reason: special_aggregate
+- product_group: Cheddar cheese
+  vector_id: '1563916479'
+  reason: aggregate
+- product_group: Cheese
+  vector_id: '91858784'
+  reason: aggregate
+- product_group: Child care services
+  vector_id: '91858942'
+  reason: aggregate
+- product_group: Children's clothing
+  vector_id: '91859024'
+  reason: aggregate
+- product_group: Children's footwear (excluding athletic)
+  vector_id: '91859032'
+  reason: special_aggregate
+- product_group: Cigarettes
+  vector_id: '91859242'
+  reason: aggregate
+- product_group: Citrus (excluding oranges)
+  vector_id: '1563916485'
+  reason: special_aggregate
+- product_group: City bus and subway transportation
+  vector_id: '91859096'
+  reason: aggregate
+- product_group: Clothing accessories
+  vector_id: '1277763711'
+  reason: aggregate
+- product_group: Clothing and footwear
+  vector_id: '91859016'
+  reason: aggregate
+- product_group: Coffee
+  vector_id: '91858866'
+  reason: aggregate
+- product_group: Confectionery
+  vector_id: '91858856'
+  reason: aggregate
+- product_group: Cookies and crackers
+  vector_id: '91858798'
+  reason: aggregate
+- product_group: Cooking appliances
+  vector_id: '91858996'
+  reason: aggregate
+- product_group: Cucumber
+  vector_id: '1563916495'
+  reason: aggregate
+- product_group: Dairy products
+  vector_id: '91858778'
+  reason: aggregate
+- product_group: Dental care services
+  vector_id: '91859126'
+  reason: aggregate
+- product_group: Detergents and rinse agents for dish washing
+  vector_id: '1563916505'
+  reason: aggregate
+- product_group: Detergents and soaps (other than personal care)
+  vector_id: '91858948'
+  reason: aggregate
+- product_group: Digital economy services
+  vector_id: '1563916511'
+  reason: aggregate
+- product_group: Dried and dehydrated fruit
+  vector_id: '1563916490'
+  reason: aggregate
+- product_group: Drivers' licences
+  vector_id: '91859086'
+  reason: aggregate
+- product_group: Dry or fresh pasta
+  vector_id: '1563916483'
+  reason: aggregate
+- product_group: Durable goods
+  vector_id: '91859280'
+  reason: special_aggregate
+- product_group: Education
+  vector_id: '91859204'
+  reason: aggregate
+- product_group: Education and reading
+  vector_id: '91859202'
+  reason: aggregate
+- product_group: Eggs
+  vector_id: '91858790'
+  reason: aggregate
+- product_group: Energy
+  vector_id: '91859272'
+  reason: special_aggregate
+- product_group: Eye care goods
+  vector_id: '91859118'
+  reason: aggregate
+- product_group: Eye care services
+  vector_id: '91859124'
+  reason: aggregate
+- product_group: Fabric softener
+  vector_id: '1563916508'
+  reason: aggregate
+- product_group: Financial services
+  vector_id: '91858970'
+  reason: aggregate
+- product_group: Fish
+  vector_id: '91858768'
+  reason: aggregate
+- product_group: Flour and flour-based mixes
+  vector_id: '91858810'
+  reason: aggregate
+- product_group: Food
+  vector_id: '91858740'
+  reason: aggregate
+- product_group: Food and energy
+  vector_id: '91859268'
+  reason: special_aggregate
+- product_group: Food purchased from cafeterias and other restaurants
+  vector_id: '91858890'
+  reason: aggregate
+- product_group: Food purchased from fast food and take-out restaurants
+  vector_id: '91858888'
+  reason: aggregate
+- product_group: Food purchased from stores
+  vector_id: '91858742'
+  reason: aggregate
+- product_group: Food purchased from table-service restaurants
+  vector_id: '91858886'
+  reason: aggregate
+- product_group: Fresh fruit
+  vector_id: '91858814'
+  reason: aggregate
+- product_group: Fresh fruit and vegetables
+  vector_id: '91859270'
+  reason: special_aggregate
+- product_group: Fresh milk
+  vector_id: '91858780'
+  reason: aggregate
+- product_group: Fresh or frozen beef chuck cuts
+  vector_id: '1592274358'
+  reason: aggregate
+- product_group: Fresh or frozen beef hip cuts
+  vector_id: '1592274355'
+  reason: aggregate
+- product_group: Fresh or frozen beef loin cuts
+  vector_id: '1592274356'
+  reason: aggregate
+- product_group: Fresh or frozen beef rib cuts
+  vector_id: '1592274357'
+  reason: aggregate
+- product_group: Fresh or frozen chicken breasts
+  vector_id: '1592274365'
+  reason: aggregate
+- product_group: Fresh or frozen chicken drumsticks
+  vector_id: '1592274367'
+  reason: aggregate
+- product_group: Fresh or frozen chicken thighs
+  vector_id: '1592274366'
+  reason: aggregate
+- product_group: Fresh or frozen fish (including portions and fish sticks)
+  vector_id: '91858770'
+  reason: aggregate
+- product_group: Fresh or frozen ground beef
+  vector_id: '1592274360'
+  reason: aggregate
+- product_group: Fresh or frozen meat (excluding poultry)
+  vector_id: '91858746'
+  reason: special_aggregate
+- product_group: Fresh or frozen pork loin cuts
+  vector_id: '1592274362'
+  reason: aggregate
+- product_group: Fresh or frozen pork shoulder cuts
+  vector_id: '1592274363'
+  reason: aggregate
+- product_group: Fresh or frozen poultry
+  vector_id: '91858754'
+  reason: aggregate
+- product_group: Fresh or frozen whole chicken
+  vector_id: '1592274368'
+  reason: aggregate
+- product_group: Fresh stewing beef
+  vector_id: '1592274359'
+  reason: aggregate
+- product_group: Fresh vegetables
+  vector_id: '91858834'
+  reason: aggregate
+- product_group: Frozen and dried vegetables
+  vector_id: '91858846'
+  reason: aggregate
+- product_group: Frozen food preparations
+  vector_id: '91858878'
+  reason: aggregate
+- product_group: Frozen fruit
+  vector_id: '1563916491'
+  reason: aggregate
+- product_group: Fruit juices
+  vector_id: '91858826'
+  reason: aggregate
+- product_group: Fuel, parts and accessories for recreational vehicles
+  vector_id: '91859172'
+  reason: aggregate
+- product_group: Furniture and household textiles
+  vector_id: '91858974'
+  reason: aggregate
+- product_group: Goods
+  vector_id: '91859278'
+  reason: special_aggregate
+- product_group: Goods excluding food purchased from stores and energy
+  vector_id: '91859292'
+  reason: special_aggregate
+- product_group: Grapes
+  vector_id: '1563916486'
+  reason: aggregate
+- product_group: Ham and bacon
+  vector_id: '91858762'
+  reason: aggregate
+- product_group: Ham excluding deli ham
+  vector_id: '1563916467'
+  reason: special_aggregate
+- product_group: Health and personal care
+  vector_id: '91859106'
+  reason: aggregate
+- product_group: Health care goods
+  vector_id: '91859110'
+  reason: aggregate
+- product_group: Health care services
+  vector_id: '91859122'
+  reason: aggregate
+- product_group: Household cleaning and polishing products
+  vector_id: '1563916506'
+  reason: aggregate
+- product_group: Household equipment
+  vector_id: '91858992'
+  reason: aggregate
+- product_group: Household furnishings and equipment
+  vector_id: '91858972'
+  reason: aggregate
+- product_group: Household operations
+  vector_id: '91858928'
+  reason: aggregate
+- product_group: Household operations, furnishings and equipment
+  vector_id: '91858926'
+  reason: aggregate
+- product_group: Household paper supplies
+  vector_id: '1563916509'
+  reason: aggregate
+- product_group: Household textiles
+  vector_id: '91858984'
+  reason: aggregate
+- product_group: Household tools (including lawn, garden and snow removal equipment)
+  vector_id: '91859008'
+  reason: aggregate
+- product_group: Housekeeping services
+  vector_id: '91858944'
+  reason: aggregate
+- product_group: Ice cream and related products
+  vector_id: '91858786'
+  reason: aggregate
+- product_group: Infant formula
+  vector_id: '1563916500'
+  reason: aggregate
+- product_group: Instant and other coffee
+  vector_id: '1563916498'
+  reason: aggregate
+- product_group: Insurance, licences and other services for recreational vehicles
+  vector_id: '91859174'
+  reason: aggregate
+- product_group: Jam, jelly and other preserves
+  vector_id: '1563916489'
+  reason: aggregate
+- product_group: Jewellery
+  vector_id: '91859044'
+  reason: aggregate
+- product_group: Laundry and dishwashing appliances
+  vector_id: '91859000'
+  reason: aggregate
+- product_group: Laundry detergents and soaps
+  vector_id: '1563916504'
+  reason: aggregate
+- product_group: Lettuce
+  vector_id: '91858840'
+  reason: aggregate
+- product_group: Liquor purchased from stores
+  vector_id: '91859238'
+  reason: aggregate
+- product_group: Liquor served in licensed establishments
+  vector_id: '91859230'
+  reason: aggregate
+- product_group: Low-fat milk
+  vector_id: '1563916478'
+  reason: aggregate
+- product_group: Magazines and periodicals
+  vector_id: '91859216'
+  reason: aggregate
+- product_group: Margarine
+  vector_id: '91858860'
+  reason: aggregate
+- product_group: Meat
+  vector_id: '91858744'
+  reason: aggregate
+- product_group: Men's clothing
+  vector_id: '91859022'
+  reason: aggregate
+- product_group: Men's footwear (excluding athletic)
+  vector_id: '91859030'
+  reason: special_aggregate
+- product_group: Mozzarella cheese
+  vector_id: '1563916482'
+  reason: aggregate
+- product_group: Mushrooms
+  vector_id: '1563916496'
+  reason: aggregate
+- product_group: Newspapers
+  vector_id: '91859214'
+  reason: aggregate
+- product_group: Non-durable goods
+  vector_id: '91859284'
+  reason: special_aggregate
+- product_group: Non-electric kitchen utensils, tableware and cookware
+  vector_id: '91859004'
+  reason: aggregate
+- product_group: Non-prescribed medicines
+  vector_id: '91859116'
+  reason: aggregate
+- product_group: Nut butter
+  vector_id: '1563916501'
+  reason: aggregate
+- product_group: Nuts and seeds
+  vector_id: '91858830'
+  reason: aggregate
+- product_group: Onions
+  vector_id: '1563916493'
+  reason: aggregate
+- product_group: Operation of passenger vehicles
+  vector_id: '91859070'
+  reason: aggregate
+- product_group: Operation of recreational vehicles
+  vector_id: '91859170'
+  reason: aggregate
+- product_group: Oranges
+  vector_id: '91858818'
+  reason: aggregate
+- product_group: Other alcoholic beverages purchased in stores
+  vector_id: '95701009'
+  reason: aggregate
+- product_group: Other bakery products
+  vector_id: '91858800'
+  reason: aggregate
+- product_group: Other dairy products
+  vector_id: '91858788'
+  reason: aggregate
+- product_group: Other edible fats and oils
+  vector_id: '91858862'
+  reason: aggregate
+- product_group: Other food products and non-alcoholic beverages
+  vector_id: '91858850'
+  reason: aggregate
+- product_group: Other fresh fruit
+  vector_id: '91858822'
+  reason: aggregate
+- product_group: Other fresh or frozen beef
+  vector_id: '1592274361'
+  reason: aggregate
+- product_group: Other fresh or frozen chicken
+  vector_id: '1592274369'
+  reason: aggregate
+- product_group: Other fresh or frozen pork
+  vector_id: '1592274364'
+  reason: aggregate
+- product_group: Other fresh vegetables
+  vector_id: '91858842'
+  reason: aggregate
+- product_group: Other furniture
+  vector_id: '91858982'
+  reason: aggregate
+- product_group: Other health care goods
+  vector_id: '91859120'
+  reason: aggregate
+- product_group: Other health care services
+  vector_id: '91859128'
+  reason: aggregate
+- product_group: Other home entertainment equipment, parts and services
+  vector_id: '91859186'
+  reason: aggregate
+- product_group: Other horticultural goods
+  vector_id: '91858964'
+  reason: aggregate
+- product_group: Other household appliances
+  vector_id: '91859002'
+  reason: aggregate
+- product_group: Other household cleaning products
+  vector_id: '91858950'
+  reason: aggregate
+- product_group: Other household equipment
+  vector_id: '91859010'
+  reason: aggregate
+- product_group: Other household furnishings and equipment
+  vector_id: '91859014'
+  reason: aggregate
+- product_group: Other household goods and services
+  vector_id: '91858958'
+  reason: aggregate
+- product_group: Other personal care supplies and equipment
+  vector_id: '91859140'
+  reason: aggregate
+- product_group: Other preserved fruit and fruit preparations
+  vector_id: '91858828'
+  reason: aggregate
+- product_group: Other processed meat
+  vector_id: '91858764'
+  reason: aggregate
+- product_group: Other reading material (excluding textbooks)
+  vector_id: '95701007'
+  reason: special_aggregate
+- product_group: Other shellfish
+  vector_id: '1563916475'
+  reason: aggregate
+- product_group: Other tobacco products and smokers' supplies
+  vector_id: '95701011'
+  reason: aggregate
+- product_group: Owned accommodation
+  vector_id: '91858902'
+  reason: aggregate
+- product_group: Paper supplies
+  vector_id: '91858954'
+  reason: aggregate
+- product_group: Parking fees
+  vector_id: '91859088'
+  reason: aggregate
+- product_group: Passenger vehicle parts, accessories and supplies
+  vector_id: '91859076'
+  reason: aggregate
+- product_group: Passenger vehicle parts, maintenance and repairs
+  vector_id: '91859074'
+  reason: aggregate
+- product_group: Passenger vehicle registration fees
+  vector_id: '91859084'
+  reason: aggregate
+- product_group: Pasta mixes
+  vector_id: '1563916484'
+  reason: aggregate
+- product_group: Pasta products
+  vector_id: '91858808'
+  reason: aggregate
+- product_group: Peppers
+  vector_id: '1563916494'
+  reason: aggregate
+- product_group: Personal care
+  vector_id: '91859130'
+  reason: aggregate
+- product_group: Personal care supplies and equipment
+  vector_id: '91859132'
+  reason: aggregate
+- product_group: Personal soap
+  vector_id: '91859134'
+  reason: aggregate
+- product_group: Plastic and aluminum foil supplies
+  vector_id: '91858956'
+  reason: aggregate
+- product_group: Postal and other communications services
+  vector_id: '91858934'
+  reason: aggregate
+- product_group: Potato chips and other snack products n.e.c.
+  vector_id: '1563916502'
+  reason: aggregate
+- product_group: Potatoes
+  vector_id: '91858836'
+  reason: aggregate
+- product_group: Prescribed medicines (excluding medicinal cannabis)
+  vector_id: '91859114'
+  reason: special_aggregate
+- product_group: Preserved fruit and fruit preparations
+  vector_id: '91858824'
+  reason: aggregate
+- product_group: Preserved vegetables and vegetable preparations
+  vector_id: '91858844'
+  reason: aggregate
+- product_group: Private transportation
+  vector_id: '91859058'
+  reason: aggregate
+- product_group: Private transportation excluding gasoline
+  vector_id: '91859266'
+  reason: special_aggregate
+- product_group: Processed cheese
+  vector_id: '1563916480'
+  reason: aggregate
+- product_group: Purchase and leasing of passenger vehicles
+  vector_id: '91859062'
+  reason: aggregate
+- product_group: Purchase of digital media
+  vector_id: '91859184'
+  reason: aggregate
+- product_group: Purchase of passenger vehicles
+  vector_id: '91859064'
+  reason: aggregate
+- product_group: Purchase of recreational vehicles and outboard motors
+  vector_id: '91859168'
+  reason: aggregate
+- product_group: Purchase, leasing and rental of passenger vehicles
+  vector_id: '91859060'
+  reason: aggregate
+- product_group: Recreation
+  vector_id: '91859146'
+  reason: aggregate
+- product_group: Recreation, education and reading
+  vector_id: '91859144'
+  reason: aggregate
+- product_group: Recreational equipment and services (excluding recreational vehicles)
+  vector_id: '91859148'
+  reason: special_aggregate
+- product_group: Recreational services
+  vector_id: '91859164'
+  reason: aggregate
+- product_group: Refrigerators and freezers
+  vector_id: '91858998'
+  reason: aggregate
+- product_group: Rental of digital media
+  vector_id: '91859182'
+  reason: aggregate
+- product_group: Rented accommodation
+  vector_id: '91858894'
+  reason: aggregate
+- product_group: Rice and rice-based mixes
+  vector_id: '91858804'
+  reason: aggregate
+- product_group: Roasted or ground coffee
+  vector_id: '1563916497'
+  reason: aggregate
+- product_group: Seafood and other marine products
+  vector_id: '91858774'
+  reason: aggregate
+- product_group: Semi-durable goods
+  vector_id: '91859282'
+  reason: special_aggregate
+- product_group: Services
+  vector_id: '91873252'
+  reason: special_aggregate
+- product_group: Services related to household furnishings and equipment
+  vector_id: '91859012'
+  reason: aggregate
+- product_group: Shelter
+  vector_id: '91858892'
+  reason: aggregate
+- product_group: Shrimps and prawns
+  vector_id: '1563916473'
+  reason: aggregate
+- product_group: Soup
+  vector_id: '91858874'
+  reason: aggregate
+- product_group: Spectator entertainment (excluding video and audio subscription services)
+  vector_id: '91859196'
+  reason: special_aggregate
+- product_group: Stationery
+  vector_id: '1563916510'
+  reason: aggregate
+- product_group: Sugar and syrup
+  vector_id: '91858854'
+  reason: aggregate
+- product_group: Taxi and other local and commuter transportation services
+  vector_id: '91859098'
+  reason: aggregate
+- product_group: Tea
+  vector_id: '91858868'
+  reason: aggregate
+- product_group: Telephone services
+  vector_id: '91858932'
+  reason: aggregate
+- product_group: Tomatoes
+  vector_id: '91858838'
+  reason: aggregate
+- product_group: Tools and other household equipment
+  vector_id: '91859006'
+  reason: aggregate
+- product_group: Transportation
+  vector_id: '91859056'
+  reason: aggregate
+- product_group: Travel services
+  vector_id: '91859188'
+  reason: aggregate
+- product_group: Travel tours
+  vector_id: '91859192'
+  reason: aggregate
+- product_group: Unripened or fresh cheese
+  vector_id: '1563916481'
+  reason: aggregate
+- product_group: Upholstered furniture
+  vector_id: '91858978'
+  reason: aggregate
+- product_group: Use of recreational facilities and services
+  vector_id: '91859200'
+  reason: aggregate
+- product_group: Video equipment
+  vector_id: '91859180'
+  reason: aggregate
+- product_group: Watches
+  vector_id: '91859042'
+  reason: aggregate
+- product_group: Water, fuel and electricity
+  vector_id: '91858916'
+  reason: aggregate
+- product_group: Whole milk
+  vector_id: '1563916477'
+  reason: aggregate
+- product_group: Window coverings
+  vector_id: '91858986'
+  reason: aggregate
+- product_group: Wine purchased from stores
+  vector_id: '91859236'
+  reason: aggregate
+- product_group: Wine served in licensed establishments
+  vector_id: '91859228'
+  reason: aggregate
+- product_group: Women's clothing
+  vector_id: '91859020'
+  reason: aggregate
+- product_group: Women's footwear (excluding athletic)
+  vector_id: '91859028'
+  reason: special_aggregate
+- product_group: Wooden furniture
+  vector_id: '91858980'
+  reason: aggregate

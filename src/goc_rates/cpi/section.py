@@ -7,8 +7,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from goc_rates.config import CpiConfig
+from goc_rates.cpi.basket_map import check_basket_agreement
 from goc_rates.cpi.bulk import (
-    BASKET_WEIGHT_TOLERANCE_PP,
     EXPECTED_BULK_PRODUCT_IDS,
     STATCAN_WDS_BASE_URL,
     BulkTable,
@@ -416,10 +416,10 @@ def build_inflation_section_from_bulk(
     Component SA indexes merge across the monthly and core bulk zips,
     published trim and median index levels come from the core zip via the
     registry index pins (converted to YoY with year_over_year_percent),
-    basket weights are parsed from the basket zip and must match the
-    registry vintage and every pinned weight within rounding tolerance,
-    and every registry vector must appear in the bulk content or the build
-    fails closed. Bulk unit metadata is asserted before any derive step.
+    and basket agreement is validated through check_basket_agreement over
+    the 18100007 product groups with per component tolerances. The direct
+    index vector lookup is retired: basket vectors never equal registry
+    index vectors. Bulk unit metadata is asserted before any derive step.
     """
     specs = specs_from_config(config)
     weights = normalize_weights(specs)
@@ -432,25 +432,12 @@ def build_inflation_section_from_bulk(
                 f"bulk table {name!r} product id {bulk_tables[name].product_id} "
                 f"must pin {expected_id}"
             )
-    basket = extract_basket_weights(bulk_tables["basket_weights"].zip_bytes)
-    if basket.expenditure_year != vintage.expenditure_year:
-        raise ValueError(
-            f"basket expenditure year {basket.expenditure_year} must pin {vintage.expenditure_year}"
-        )
-    if basket.link_month != vintage.link_month:
-        raise ValueError(f"basket link month {basket.link_month!r} must pin {vintage.link_month!r}")
-    for spec in specs:
-        bulk_weight = basket.weights_percent.get(spec.vector_id)
-        if bulk_weight is None:
-            raise ValueError(f"basket weights are missing registry vector {spec.vector_id!r}")
-        if abs(bulk_weight - spec.weight_percent) > BASKET_WEIGHT_TOLERANCE_PP:
-            raise ValueError(
-                f"basket weight for {spec.component_id!r} {bulk_weight:.4f} "
-                f"disagrees with registry {spec.weight_percent:.4f} "
-                f"beyond {BASKET_WEIGHT_TOLERANCE_PP} pp"
-            )
-    if set(basket.weights_percent.keys()) != {spec.vector_id for spec in specs}:
-        raise ValueError("basket weights must cover exactly the registry vectors")
+    basket = extract_basket_weights(
+        bulk_tables["basket_weights"].zip_bytes,
+        expenditure_year=vintage.expenditure_year,
+        link_month=vintage.link_month,
+    )
+    check_basket_agreement(config, basket)
     wanted = {spec.vector_id: spec.component_id for spec in specs}
     merged: dict[str, dict[str, float]] = {}
     for key in ("cpi_monthly", "core_statistics"):

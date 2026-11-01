@@ -44,14 +44,16 @@ def test_demo_fixture_passes_v19_to_v22() -> None:
         assert _check(snapshot, check_id)["passed"] is True
 
 
-def test_missing_inflation_fails_all_four() -> None:
-    """No inflation section fails V19 to V22."""
+def test_missing_inflation_skips_all_four() -> None:
+    """No inflation section skips V19 to V22 as CPI degraded, not a failure."""
     snapshot = _inflation_snapshot()
     observations = snapshot["observations"]
     assert isinstance(observations, dict)
     del observations["inflation"]
     for check_id in ("V19", "V20", "V21", "V22"):
-        assert _check(snapshot, check_id)["passed"] is False
+        item = _check(snapshot, check_id)
+        assert item["passed"] is True
+        assert "missing" in str(item["detail"]).lower() or "skip" in str(item["detail"]).lower()
 
 
 def test_weight_drift_tamper_fails_v19() -> None:

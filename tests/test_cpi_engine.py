@@ -94,6 +94,8 @@ def test_specs_reject_non_sa_component() -> None:
             vector_id=item.vector_id,
             weight_percent=item.weight_percent,
             seasonally_adjusted=False,
+            basket_product_groups=item.basket_product_groups,
+            basket_vector_ids=item.basket_vector_ids,
         )
         for item in config.components
     )
@@ -103,6 +105,7 @@ def test_specs_reject_non_sa_component() -> None:
         product_ids=dict(config.product_ids),
         components=tampered,
         published=dict(config.published),
+        basket_exclusions=tuple(config.basket_exclusions),
     )
     with pytest.raises(ValueError, match="seasonally adjusted"):
         specs_from_config(drifted)

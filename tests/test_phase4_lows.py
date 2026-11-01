@@ -146,6 +146,8 @@ def test_duplicate_vector_id_rejected_from_specs() -> None:
             vector_id=config.components[0].vector_id,
             weight_percent=item.weight_percent,
             seasonally_adjusted=item.seasonally_adjusted,
+            basket_product_groups=item.basket_product_groups,
+            basket_vector_ids=item.basket_vector_ids,
         )
         for item in config.components
     )
@@ -155,6 +157,7 @@ def test_duplicate_vector_id_rejected_from_specs() -> None:
         product_ids=dict(config.product_ids),
         components=tampered,
         published=dict(config.published),
+        basket_exclusions=tuple(config.basket_exclusions),
     )
     from goc_rates.cpi.components import specs_from_config
 
@@ -163,17 +166,63 @@ def test_duplicate_vector_id_rejected_from_specs() -> None:
 
 
 def _basket_zip(
-    weights: dict[str, float],
+    weights_by_product: dict[str, float],
+    vectors_by_product: dict[str, str] | None = None,
     year: int = 2024,
-    link: str = "2025-05",
 ) -> bytes:
-    """Build an in memory basket weights zip for fixtures."""
-    lines = ["VECTOR,WEIGHT_PERCENT,EXPENDITURE_YEAR,LINK_MONTH"]
-    for vector in sorted(weights.keys()):
-        lines.append(f"{vector},{weights[vector]},{year},{link}")
+    """Build an in memory basket weights zip using the live 18100007 schema."""
+    import csv as csv_mod
+
+    vectors = vectors_by_product or {}
+    output = io.StringIO()
+    writer = csv_mod.writer(output, lineterminator="\n")
+    writer.writerow(
+        [
+            "REF_DATE",
+            "GEO",
+            "DGUID",
+            "Products and product groups",
+            "Price period of weight",
+            "Geographic distribution of weight",
+            "UOM",
+            "UOM_ID",
+            "SCALAR_FACTOR",
+            "SCALAR_ID",
+            "VECTOR",
+            "COORDINATE",
+            "VALUE",
+            "STATUS",
+            "SYMBOL",
+            "TERMINATED",
+            "DECIMALS",
+        ]
+    )
+    for position, product in enumerate(sorted(weights_by_product.keys())):
+        vector = vectors.get(product, f"{40000000 + position:08d}")
+        writer.writerow(
+            [
+                str(year),
+                "Canada",
+                "2016A000011124",
+                product,
+                "Weight at basket link month prices",
+                "Distribution to selected geographies",
+                "Percent",
+                "239",
+                "units",
+                "0",
+                vector,
+                f"1.{position + 1}.1.1",
+                str(weights_by_product[product]),
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
-        archive.writestr("basket-weights.csv", "\n".join(lines).encode("utf-8"))
+        archive.writestr("basket-weights.csv", output.getvalue().encode("utf-8"))
     return buffer.getvalue()
 
 
@@ -183,12 +232,31 @@ def _registry_weights() -> dict[str, float]:
     return {item.vector_id: item.weight_percent for item in config.components}
 
 
+def _matching_basket_slice() -> tuple[dict[str, float], dict[str, str]]:
+    """Return basket product weights and vectors matching the registry."""
+    config = load_cpi_config(CPI_REGISTRY_PATH)
+    weights_by_product: dict[str, float] = {}
+    vectors_by_product: dict[str, str] = {}
+    for component in config.components:
+        groups = list(component.basket_product_groups)
+        vectors = list(component.basket_vector_ids)
+        share = float(component.weight_percent) / float(len(groups))
+        for group, vector in zip(groups, vectors, strict=True):
+            weights_by_product[group] = share
+            vectors_by_product[group] = vector
+    for exclusion in config.basket_exclusions:
+        weights_by_product[exclusion.product_group] = 0.01
+        vectors_by_product[exclusion.product_group] = exclusion.vector_id
+    return weights_by_product, vectors_by_product
+
+
 def test_basket_expenditure_year_disagree_fails_closed() -> None:
     """A basket vintage year differing from the registry fails closed."""
     from goc_rates.cpi.section import build_inflation_section_from_bulk
 
     config = load_cpi_config(CPI_REGISTRY_PATH)
-    basket_bytes = _basket_zip(_registry_weights(), year=2023)
+    weights_by_product, vectors_by_product = _matching_basket_slice()
+    basket_bytes = _basket_zip(weights_by_product, vectors_by_product, year=2023)
     bulk: dict[str, BulkTable] = {}
     for name, product_id in (
         ("cpi_monthly", 18100004),
@@ -210,15 +278,16 @@ def test_basket_expenditure_year_disagree_fails_closed() -> None:
 
 def test_basket_weight_disagree_fails_closed() -> None:
     """A basket weight beyond rounding tolerance fails closed."""
-    from goc_rates.cpi.bulk import BASKET_WEIGHT_TOLERANCE_PP
+    from goc_rates.cpi.basket_map import component_tolerance
     from goc_rates.cpi.section import build_inflation_section_from_bulk
 
     config = load_cpi_config(CPI_REGISTRY_PATH)
-    weights = _registry_weights()
-    bad_weights = dict(weights)
-    first = sorted(bad_weights.keys())[0]
-    bad_weights[first] = bad_weights[first] + BASKET_WEIGHT_TOLERANCE_PP + 0.05
-    basket_bytes = _basket_zip(bad_weights)
+    weights_by_product, vectors_by_product = _matching_basket_slice()
+    first_component = config.components[0]
+    first_group = first_component.basket_product_groups[0]
+    tolerance = component_tolerance(len(first_component.basket_product_groups))
+    weights_by_product[first_group] = weights_by_product[first_group] + tolerance + 0.05
+    basket_bytes = _basket_zip(weights_by_product, vectors_by_product)
     bulk: dict[str, BulkTable] = {}
     for name, product_id in (
         ("cpi_monthly", 18100004),
