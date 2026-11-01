@@ -147,7 +147,27 @@ function InflationRoute() {
 
 function VerificationRoute() {
   const d = useDesk();
-  return <VerificationPage verify={d.verify() ?? null} loading={d.verifyLoading()} error={d.verifyError()} />;
+  return (
+    <VerificationPage
+      verify={d.verify() ?? null}
+      snapshot={d.snapshot() ?? null}
+      asof={d.asof()}
+      loading={d.verifyLoading()}
+      error={d.verifyError()}
+    />
+  );
+}
+
+function MethodsRoute() {
+  const d = useDesk();
+  return (
+    <MethodsPage
+      snapshot={d.snapshot() ?? null}
+      verify={d.verify() ?? null}
+      loading={d.snapLoading()}
+      error={d.snapError()}
+    />
+  );
 }
 
 function BreaksRoute() {
@@ -309,6 +329,10 @@ function Layout(props: ParentProps) {
           }
           verify={verify() ?? null}
           curveMethod={snapshot()?.observations.curve?.method ?? null}
+          inflationMethod={snapshot()?.observations.inflation?.method ?? null}
+          breaksMethod={snapshot()?.observations.breaks?.method ?? null}
+          feedVintage={snapshot()?.observations.breaks?.feed_vintage ?? null}
+          checkedUtc={verify()?.checked_utc}
           unknownDate={resolved().unknownDate}
         />
       </DeskProvider>
@@ -325,7 +349,7 @@ export default function App() {
         <Route path="/curve" component={CurveRoute} />
         <Route path="/funding" component={FundingRoute} />
         <Route path="/inflation" component={InflationRoute} />
-        <Route path="/methods" component={MethodsPage} />
+        <Route path="/methods" component={MethodsRoute} />
         <Route path="/verification" component={VerificationRoute} />
         <Route path="/breaks" component={BreaksRoute} />
         <Route

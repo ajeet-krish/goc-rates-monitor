@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from goc_rates.breaks import load_switch_feed
 from goc_rates.clients.fred import FredObservation
 from goc_rates.clients.valet import ValetObservation
 from goc_rates.config import load_benchmark_map
@@ -17,6 +18,12 @@ from goc_rates.verify import verify_file
 from tests.cpi_fixtures import attach_demo_inflation
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "benchmark_map.yaml"
+SWITCH_CONFIG = Path(__file__).resolve().parent.parent / "config" / "benchmark_switches.yaml"
+
+
+def _switch_feed() -> Any:
+    """Load the pinned switch feed for live observation builds."""
+    return load_switch_feed(SWITCH_CONFIG)
 
 
 def _histories(days: int = 260) -> tuple[dict[str, list[Any]], dict[str, list[Any]], str]:
@@ -70,7 +77,7 @@ def _write_and_verify(
     assert code == 0
     report = json.loads((directory / "verify.json").read_text(encoding="utf-8"))
     assert report["passed"] is True
-    assert report["passed_count"] == 22
+    assert report["passed_count"] == 23
     assert report["failed_count"] == 0
     return report
 
@@ -81,12 +88,18 @@ def _attach_inflation(observations: dict[str, Any], provenance: dict[str, Any]) 
 
 
 def test_live_full_pass_v01_to_v22(tmp_path: Path) -> None:
-    """Mocked Valet plus FRED histories yield a snapshot that passes V01-V22."""
+    """Mocked Valet plus FRED histories yield a snapshot that passes V01-V23."""
     benchmark_map = load_benchmark_map(CONFIG)
     valet_by_series, fred_by_series, last = _histories()
     snapshot_date = dt.date.fromisoformat(last)
     observations, provenance, warnings = build_live_observations(
-        snapshot_date, benchmark_map, valet_by_series, fred_by_series, True, None
+        snapshot_date,
+        benchmark_map,
+        valet_by_series,
+        fred_by_series,
+        True,
+        None,
+        _switch_feed(),
     )
     _attach_inflation(observations, provenance)
     report = _write_and_verify(tmp_path, last, observations, provenance, warnings)
@@ -103,7 +116,13 @@ def test_live_degraded_fred_passes_v01_to_v22(tmp_path: Path) -> None:
     valet_by_series, _, last = _histories()
     snapshot_date = dt.date.fromisoformat(last)
     observations, provenance, warnings = build_live_observations(
-        snapshot_date, benchmark_map, valet_by_series, {}, False, None
+        snapshot_date,
+        benchmark_map,
+        valet_by_series,
+        {},
+        False,
+        None,
+        _switch_feed(),
     )
     assert any("FRED degraded" in item for item in warnings)
     _attach_inflation(observations, provenance)
@@ -123,7 +142,13 @@ def test_live_degraded_cpi_passes_v01_to_v22(tmp_path: Path) -> None:
     valet_by_series, fred_by_series, last = _histories()
     snapshot_date = dt.date.fromisoformat(last)
     observations, provenance, warnings = build_live_observations(
-        snapshot_date, benchmark_map, valet_by_series, fred_by_series, True, None
+        snapshot_date,
+        benchmark_map,
+        valet_by_series,
+        fred_by_series,
+        True,
+        None,
+        _switch_feed(),
     )
     assert "inflation" not in observations
     warnings.append("CPI degraded, inflation omitted: Meat 2.40 vs live 1.87")
@@ -140,7 +165,8 @@ def test_live_degraded_cpi_passes_v01_to_v22(tmp_path: Path) -> None:
             or "skip" in by_id[check_id]["detail"].lower()
         )
     assert by_id["V13"]["passed"] is True
-    assert report["passed_count"] == 22
+    assert by_id["V23"]["passed"] is True
+    assert report["passed_count"] == 23
 
 
 def test_resolve_target_date_strict_and_previous_joint() -> None:

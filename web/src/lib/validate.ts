@@ -24,6 +24,7 @@ export const ALLOWED_UNITS: ReadonlySet<string> = new Set([
   "unitless_ratio",
   "percent_per_month",
   "percentage_points",
+  "count",
 ]);
 
 /** Mirrors the closed Quality set in src/goc_rates/models.py. */
@@ -34,18 +35,21 @@ const ALLOWED_QUALITIES: ReadonlySet<string> = new Set([
   "revised",
 ]);
 
-/** Expected check ids for a passing verify report, mirrors V01 to V22 in verify.py. */
+/** Expected check ids for a passing verify report, mirrors V01 to V23 in verify.py. */
 export const EXPECTED_VERIFY_IDS: ReadonlyArray<string> = Array.from(
-  { length: 22 },
+  { length: 23 },
   (_, i) => "V" + String(i + 1).padStart(2, "0")
 );
 /** Collection caps mirroring the Python pipeline in src/goc_rates/limits.py. */
 export const MAX_KNOTS = 10;
 export const MAX_SPREAD_RECORDS = 2000;
 export const MAX_BACKTEST_OBS = 2000;
-export const MAX_VERIFY_CHECKS = 22;
+export const MAX_VERIFY_CHECKS = 23;
 export const MAX_CPI_COMPONENTS = 128;
 export const MAX_CPI_MONTHS = 240;
+export const MAX_SWITCH_EVENTS = 64;
+export const MAX_DOD_RECORDS = 4;
+export const MAX_HISTORY_OBS = 2000;
 export const MAX_QUANTITIES = 10000;
 export const MAX_INDEX_DATES = 2000;
 export const MAX_PROVENANCE_ENTRIES = 64;
@@ -400,6 +404,8 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
 
   assertInflation(observations.inflation);
 
+  assertBreaks(observations.breaks);
+
   const provenance = doc.provenance;
   if (!isRecord(provenance)) {
     fail("snapshot.provenance", "provenance must be an object");
@@ -426,6 +432,34 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
           "exceeds the " + MAX_PROVENANCE_STRING + " character cap"
         );
       }
+    }
+  }
+  if (isRecord(observations.breaks)) {
+    const breaksNode = observations.breaks as Record<string, unknown>;
+    const switchProv = (provenance as Record<string, unknown>)["benchmark_switches"];
+    if (!isRecord(switchProv)) {
+      fail("snapshot.provenance.benchmark_switches", "provenance benchmark_switches is missing beside breaks");
+    }
+    if (switchProv["vintage"] !== breaksNode["feed_vintage"]) {
+      fail(
+        "snapshot.provenance.benchmark_switches.vintage",
+        "vintage must match breaks feed_vintage " +
+          JSON.stringify(breaksNode["feed_vintage"]) +
+          ", got " +
+          JSON.stringify(switchProv["vintage"])
+      );
+    }
+    if (
+      typeof switchProv["sha256"] !== "string" ||
+      (switchProv["sha256"] as string).trim() !== (breaksNode["feed_sha256"] as string).trim()
+    ) {
+      fail(
+        "snapshot.provenance.benchmark_switches.sha256",
+        "sha256 must match breaks feed_sha256 " +
+          JSON.stringify(breaksNode["feed_sha256"]) +
+          ", got " +
+          JSON.stringify(switchProv["sha256"])
+      );
     }
   }
 
@@ -832,6 +866,251 @@ function assertInflation(node: unknown): void {
   }
 }
 
+/** Pinned breaks facts mirrored from src/goc_rates/breaks.py and the switch feed. */
+const BREAKS_METHOD = "benchmark_switch_dod_gate_v1";
+const BREAKS_FEED_SOURCE = "bench_CDN.pdf";
+const BREAKS_FEED_VINTAGE = "2026-11-01";
+const BREAKS_THRESHOLD_BP = 15.0;
+const BREAKS_TENORS: ReadonlyArray<string> = ["2Y", "5Y", "10Y", "30Y"];
+const FEED_ALLOWED_TENORS: ReadonlyArray<string> = [
+  "2Y",
+  "3Y",
+  "5Y",
+  "7Y",
+  "10Y",
+  "30Y",
+  "LONG",
+];
+const BREAKS_GATES: ReadonlyArray<string> = [
+  "comparable",
+  "switch_break",
+  "calendar_gap",
+  "missing_prev",
+  "insufficient_history",
+];
+const BREAKS_SOURCE_ID = "derived:dod_gate";
+const NULL_GATES: ReadonlyArray<string> = [
+  "switch_break",
+  "missing_prev",
+  "insufficient_history",
+];
+const HEX64 = /^[0-9a-f]{64}$/;
+
+function assertNullableFinite(
+  value: unknown,
+  path: string
+): asserts value is number | null {
+  if (value === null) return;
+  assertFiniteNumber(value, path);
+}
+
+/**
+ * Validate the breaks section, mirroring V23 in verify.py.
+ * Structural only: pins method, dates, feed digest grammar, tenor closure,
+ * gate closure, and nullness rules. Joint calendar dates are never
+ * recomputed here, the pipeline owns the Toronto joint calendar.
+ */
+function assertBreaks(node: unknown): void {
+  if (node === undefined) return;
+  const path = "snapshot.observations.breaks";
+  if (!isRecord(node)) {
+    fail(path, "breaks must be an object");
+  }
+  if (node.method !== BREAKS_METHOD) {
+    fail(
+      path + ".method",
+      "method must pin " + BREAKS_METHOD + ", got " + JSON.stringify(node.method)
+    );
+  }
+  assertIsoDate(node.snapshot_date, path + ".snapshot_date");
+  assertIsoDate(node.print_date, path + ".print_date");
+  assertIsoDate(node.feed_vintage, path + ".feed_vintage");
+  if (node.feed_vintage !== BREAKS_FEED_VINTAGE) {
+    fail(
+      path + ".feed_vintage",
+      "feed_vintage must pin " + BREAKS_FEED_VINTAGE + ", got " + JSON.stringify(node.feed_vintage)
+    );
+  }
+  if (typeof node.feed_source !== "string" || node.feed_source.trim() !== BREAKS_FEED_SOURCE) {
+    fail(
+      path + ".feed_source",
+      "feed_source must pin " + BREAKS_FEED_SOURCE + ", got " + JSON.stringify(node.feed_source)
+    );
+  }
+  if (typeof node.feed_sha256 !== "string" || !HEX64.test(node.feed_sha256.trim())) {
+    fail(path + ".feed_sha256", "must be a 64 character lowercase hex digest");
+  }
+  assertFiniteNumber(node.threshold_bp, path + ".threshold_bp");
+  if (Math.abs((node.threshold_bp as number) - BREAKS_THRESHOLD_BP) > 1e-12) {
+    fail(path + ".threshold_bp", "must pin " + BREAKS_THRESHOLD_BP + " bp");
+  }
+  if (node.threshold_unit !== "basis_points") {
+    fail(path + ".threshold_unit", "unit must be basis_points");
+  }
+  if (!Array.isArray(node.events)) {
+    fail(path + ".events", "events must be an array");
+  }
+  if (node.events.length === 0 || node.events.length > MAX_SWITCH_EVENTS) {
+    fail(
+      path + ".events",
+      "events must hold 1 to " + MAX_SWITCH_EVENTS + " rows, got " + node.events.length
+    );
+  }
+  const seenEvents = new Set<string>();
+  node.events.forEach((row: unknown, i: number) => {
+    const rowPath = path + ".events[" + i + "]";
+    if (!isRecord(row)) {
+      fail(rowPath, "event row must be an object");
+    }
+    if (typeof row.tenor !== "string" || !FEED_ALLOWED_TENORS.includes(row.tenor)) {
+      fail(
+        rowPath + ".tenor",
+        "tenor must be one of " + JSON.stringify(FEED_ALLOWED_TENORS) + ", got " + JSON.stringify(row.tenor)
+      );
+    }
+    assertIsoDate(row.effective_date, rowPath + ".effective_date");
+    assertIsoDate(row.effective_joint_date, rowPath + ".effective_joint_date");
+    const key = (row.tenor as string) + "|" + (row.effective_date as string);
+    if (seenEvents.has(key)) {
+      fail(rowPath, "duplicate switch event " + JSON.stringify(key));
+    }
+    seenEvents.add(key);
+    assertNullableFinite(row.incoming_coupon_percent, rowPath + ".incoming_coupon_percent");
+    assertNullableFinite(row.outgoing_coupon_percent, rowPath + ".outgoing_coupon_percent");
+    for (const name of ["incoming_coupon_unit", "outgoing_coupon_unit"]) {
+      const unit = (row as Record<string, unknown>)[name];
+      if (unit !== "percent") {
+        fail(rowPath + "." + name, "unit must be percent, got " + JSON.stringify(unit));
+      }
+      if (typeof unit !== "string" || !ALLOWED_UNITS.has(unit)) {
+        fail(rowPath + "." + name, "unit is not in the closed unit set");
+      }
+    }
+    for (const name of ["incoming_maturity", "outgoing_maturity"]) {
+      const maturity = (row as Record<string, unknown>)[name];
+      if (maturity !== null && maturity !== undefined) {
+        assertIsoDate(maturity, rowPath + "." + name);
+      }
+    }
+  });
+  if (!Array.isArray(node.records) || node.records.length !== MAX_DOD_RECORDS) {
+    fail(
+      path + ".records",
+      "must hold exactly " + MAX_DOD_RECORDS + " tenor records in 2Y 5Y 10Y 30Y order"
+    );
+  }
+  const labels = (node.records as unknown[]).map((item) =>
+    isRecord(item) ? String((item as Record<string, unknown>).tenor ?? "") : ""
+  );
+  if (JSON.stringify(labels) !== JSON.stringify(BREAKS_TENORS)) {
+    fail(
+      path + ".records",
+      "tenor set must be " + JSON.stringify(BREAKS_TENORS) + ", got " + JSON.stringify(labels)
+    );
+  }
+  node.records.forEach((record: unknown, i: number) => {
+    const recordPath = path + ".records[" + i + "]";
+    if (!isRecord(record)) {
+      fail(recordPath, "record must be an object");
+    }
+    assertIsoDate(record.prev_date, recordPath + ".prev_date");
+    assertIsoDate(record.current_date, recordPath + ".current_date");
+    if ((record.current_date as string) <= (record.prev_date as string)) {
+      fail(recordPath, "current_date must exceed prev_date");
+    }
+    assertNullableFinite(record.prev_yield_percent, recordPath + ".prev_yield_percent");
+    assertNullableFinite(record.current_yield_percent, recordPath + ".current_yield_percent");
+    for (const name of ["prev_yield_unit", "current_yield_unit"]) {
+      const unit = (record as Record<string, unknown>)[name];
+      if (unit !== "percent") {
+        fail(recordPath + "." + name, "unit must be percent, got " + JSON.stringify(unit));
+      }
+      if (typeof unit !== "string" || !ALLOWED_UNITS.has(unit)) {
+        fail(recordPath + "." + name, "unit is not in the closed unit set");
+      }
+    }
+    if (record.history_count_unit !== "count") {
+      fail(
+        recordPath + ".history_count_unit",
+        "unit must be count, got " + JSON.stringify(record.history_count_unit)
+      );
+    }
+    if (typeof record.history_count_unit !== "string" || !ALLOWED_UNITS.has(record.history_count_unit)) {
+      fail(recordPath + ".history_count_unit", "unit is not in the closed unit set");
+    }
+    assertNullableFinite(record.dod_bp, recordPath + ".dod_bp");
+    if (record.dod_unit !== "basis_points") {
+      fail(recordPath + ".dod_unit", "unit must be basis_points");
+    }
+    if (typeof record.gate !== "string" || !BREAKS_GATES.includes(record.gate)) {
+      fail(
+        recordPath + ".gate",
+        "gate must be one of " + JSON.stringify(BREAKS_GATES) + ", got " + JSON.stringify(record.gate)
+      );
+    }
+    if (typeof record.switch_in_window !== "boolean" || typeof record.calendar_gap !== "boolean") {
+      fail(recordPath, "switch_in_window and calendar_gap must be booleans without coercion");
+    }
+    if (
+      typeof record.history_count !== "number" ||
+      !Number.isInteger(record.history_count) ||
+      (record.history_count as number) < 0 ||
+      (record.history_count as number) > MAX_HISTORY_OBS
+    ) {
+      fail(
+        recordPath + ".history_count",
+        "must be an integer in [0, " +
+          MAX_HISTORY_OBS +
+          "] without coercion, got " +
+          JSON.stringify(record.history_count)
+      );
+    }
+    const gate = record.gate as string;
+    const dod = record.dod_bp as number | null;
+    const needsNull = NULL_GATES.includes(gate);
+    if (needsNull && dod !== null) {
+      fail(
+        recordPath + ".dod_bp",
+        "gate " + gate + " must suppress dod_bp to null, got " + String(dod)
+      );
+    }
+    if (!needsNull && dod === null) {
+      fail(recordPath + ".dod_bp", "gate " + gate + " must keep a numeric dod_bp");
+    }
+    if (!isRecord(record.dod_quantity)) {
+      fail(recordPath + ".dod_quantity", "dod_quantity is missing");
+    }
+    assertQuantity(record.dod_quantity, recordPath + ".dod_quantity");
+    const quantity = record.dod_quantity as unknown as {
+      value: number | null;
+      unit: unknown;
+      quality: unknown;
+      source_id: unknown;
+    };
+    if (quantity.unit !== "basis_points") {
+      fail(recordPath + ".dod_quantity", "unit must be basis_points");
+    }
+    if (quantity.source_id !== BREAKS_SOURCE_ID) {
+      fail(recordPath + ".dod_quantity", "source_id must be " + BREAKS_SOURCE_ID);
+    }
+    if (dod === null) {
+      if (quantity.value !== null || quantity.quality !== "missing") {
+        fail(recordPath + ".dod_quantity", "null dod_bp needs a missing null quantity");
+      }
+    } else {
+      if (quantity.quality !== "observed") {
+        fail(recordPath + ".dod_quantity", "numeric dod_bp needs an observed quantity");
+      }
+      if (typeof quantity.value !== "number" || Math.abs(quantity.value - dod) > 1e-9) {
+        fail(recordPath + ".dod_quantity", "quantity value must match dod_bp");
+      }
+    }
+    if (record.source_id !== BREAKS_SOURCE_ID) {
+      fail(recordPath + ".source_id", "source_id must be " + BREAKS_SOURCE_ID);
+    }
+  });
+}
+
 /** Validate a verify report, including count consistency and digest match. */
 export function validateVerify(doc: unknown, expectedDigest?: string): VerifyReport {
   if (!isRecord(doc)) {
@@ -877,7 +1156,7 @@ export function validateVerify(doc: unknown, expectedDigest?: string): VerifyRep
   if ((doc.checks as unknown[]).length !== MAX_VERIFY_CHECKS) {
     fail(
       "verify.checks",
-      "report must contain exactly " + MAX_VERIFY_CHECKS + " checks (V01 to V22), got " +
+      "report must contain exactly " + MAX_VERIFY_CHECKS + " checks (V01 to V23), got " +
         (doc.checks as unknown[]).length
     );
   }
@@ -894,7 +1173,7 @@ export function validateVerify(doc: unknown, expectedDigest?: string): VerifyRep
   if (missing.length > 0 || extra.length > 0) {
     fail(
       "verify.checks",
-      "report must contain exactly V01 to V22, missing " +
+      "report must contain exactly V01 to V23, missing " +
         JSON.stringify(missing) +
         " extra " +
         JSON.stringify(extra)

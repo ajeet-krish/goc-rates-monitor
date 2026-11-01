@@ -12,7 +12,8 @@ export type Unit =
   | "dv01_per_million"
   | "unitless_ratio"
   | "percent_per_month"
-  | "percentage_points";
+  | "percentage_points"
+  | "count";
 
 export type Quality = "observed" | "missing" | "stale" | "revised";
 
@@ -136,6 +137,57 @@ export interface InflationSection {
   bulk: Record<string, { product_id: number; zip_sha256: string; zip_sha12: string }>;
 }
 
+export type BreaksGate =
+  | "comparable"
+  | "switch_break"
+  | "calendar_gap"
+  | "missing_prev"
+  | "insufficient_history";
+
+export interface SwitchEventRow {
+  tenor: string;
+  effective_date: string;
+  effective_joint_date: string;
+  incoming_maturity: string | null;
+  incoming_coupon_percent: number | null;
+  incoming_coupon_unit: Unit;
+  outgoing_maturity: string | null;
+  outgoing_coupon_percent: number | null;
+  outgoing_coupon_unit: Unit;
+}
+
+export interface DodRecord {
+  tenor: string;
+  prev_date: string;
+  current_date: string;
+  prev_yield_percent: number | null;
+  current_yield_percent: number | null;
+  prev_yield_unit: Unit;
+  current_yield_unit: Unit;
+  dod_bp: number | null;
+  dod_unit: Unit;
+  gate: BreaksGate;
+  switch_in_window: boolean;
+  calendar_gap: boolean;
+  history_count: number;
+  history_count_unit: Unit;
+  dod_quantity: Quantity;
+  source_id: string;
+}
+
+export interface BreaksSection {
+  method: string;
+  snapshot_date: string;
+  print_date: string;
+  feed_source: string;
+  feed_vintage: string;
+  feed_sha256: string;
+  threshold_bp: number;
+  threshold_unit: Unit;
+  events: SwitchEventRow[];
+  records: DodRecord[];
+}
+
 export interface SnapshotDoc {
   metadata: {
     snapshot_date: string;
@@ -156,9 +208,10 @@ export interface SnapshotDoc {
     risk?: RiskSection;
     backtest?: BacktestSection;
     inflation?: InflationSection;
+    breaks?: BreaksSection;
     [key: string]: unknown;
   };
-  provenance: Record<string, { source_url: string; retrieved_utc: string; vintage: string }>;
+  provenance: Record<string, { source_url: string; retrieved_utc: string; vintage: string; sha256?: string }>;
   warnings: string[];
   manifest?: { snapshot?: { sha256?: string }; files?: Record<string, { sha256: string }> };
 }

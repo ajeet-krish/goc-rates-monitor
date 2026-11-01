@@ -1,6 +1,6 @@
 # goc-rates-monitor Decision Records
 
-Last updated: 2026-11-02 (Phase 4)
+Last updated: 2026-11-02 (Phase 5)
 
 ## D01: uv for Python management
 
@@ -194,3 +194,61 @@ revisable vintages and the page must not present replica trim as an
 official print. Consequences: V22 asserts the label and status, and the
 site blocks derived displays on failed verification like every other
 section.
+
+## D25: Pinned switch feed with null outgoing legs
+
+`config/benchmark_switches.yaml` pins schema 1, source `bench_CDN.pdf`,
+and feed vintage 2026-11-01 with seven benchmark switch events. Each
+event pins a tenor, an effective date, and an incoming maturity plus
+coupon; outgoing legs stay null where unknown and are never
+fabricated. Rationale: the bench PDF is evidence, and invented
+outgoing issues would corrupt the switch window. Consequences: the
+loader rejects drift, duplicates, bad tenors, and non strict dates,
+and the feed hash travels in provenance.
+
+## D26: Joint effective dates with LONG mapped to 30Y
+
+The effective joint date is the first joint business day on or after
+the effective date, so weekend and holiday shifts are explicit via the
+calendar legs. LONG bench events map to the 30Y curve tenor.
+Rationale: switches take effect on the first printable joint day, and
+the curve only models 30Y. Consequences: verify recomputes every
+joint date, and `switch_in_window` tests `(prev, current]` per tenor.
+
+## D27: Switch suppresses, gap keeps with a flag
+
+`switch_break` suppresses the day over day delta to null, while
+`calendar_gap` keeps the numeric delta with a gap flag. `missing_prev`
+and `insufficient_history` stay null, and `comparable` keeps numbers.
+Rationale: a rotation can move the print with no market move, while a
+holiday gap is still a market move worth showing. Consequences: V23
+enforces the nullness rule per gate, and the page can annotate rather
+than splice.
+
+## D28: Dedicated V23 per user override
+
+Breaks integrity is a dedicated V23 check, not folded into V04 or
+V15. V04 stays benchmark labels only, and V15 additionally accepts
+`derived:dod_gate` quantities from the breaks section. V23 was added
+per user override to keep the switch gate visible as its own line.
+Rationale: label drift, derived units, and switch gates fail for
+different reasons and deserve distinct signals. Consequences: the
+report grows from 22 to 23 checks, and a missing breaks section
+beside a present curve fails.
+
+## D29: Feed failure fails to skeleton
+
+The live snapshot loads the switch feed beside the benchmark map and
+records `benchmark_switches` provenance with vintage plus sha256. Any
+feed error routes to the skeleton fallback, never to a silent pass
+without breaks. Rationale: publishing a curve without its rotation
+flags would mislead slope and carry readers. Consequences: missing or
+corrupt feeds exit 1 through the skeleton path.
+
+## D30: Synthetic demo stays frontend only
+
+Synthetic frontend demo data for the breaks page is deferred to the
+web layer and never enters the pipeline snapshots or verification.
+Rationale: pipeline fixtures must stay pinned to bench evidence, and
+demo moves belong behind an explicit frontend flag. Consequences: no
+synthetic yields appear in `snapshots` or `verify.json`.

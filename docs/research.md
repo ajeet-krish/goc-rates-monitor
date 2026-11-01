@@ -327,3 +327,83 @@ experimental label. Decision: reuse StatCan SA, do not refit X-13 in v1.
 - [x] Practical implications are actionable
 - [x] All sources cited
 - [x] Research supports phase architecture decisions
+
+## 2026-11-01 - Phase 5 polish: breaks automation, verification page, methods assumptions
+
+Phase 5 polishes: breaks page driven by a benchmark-switch log with a
+15 bp day-over-day fail rule, holiday-thinned calendars, and revision
+diffs; verification page driven by verify.json with blocking fail-closed
+behaviour and an explicit tolerance plus method plus SHA line; methods
+page stating every v1 assumption and limit with attribution and no
+forecasts. Live state at research time: curve live 2026-10-30, verify 22
+of 22 pass (V16/V18 spreads plus backtest missing with FRED degraded
+without key, V19 to V22 skipped with CPI degraded), site 200, routes
+index plus curve plus funding plus inflation plus placeholder plus
+methods plus verification plus breaks, StalenessBanner plus FooterStamp
+with real counts, build-data sha verify.
+
+### Key Findings
+| Finding | Source | Confidence | Application |
+|---------|------------|------------|-------------|
+| Benchmark-switch log is authoritative from bench_CDN effective dates: 2Y 2028-11-01 3.00 percent eff. 2026-10-23, 3Y 2029-09-01 3.50 percent eff. 2026-10-23, 5Y 2031-09-01 3.00 percent eff. 2026-09-10, 7Y 2033-06-01 2.75 percent eff. 2026-09-10, 10Y 2036-06-01 3.25 percent eff. 2026-06-23, Long 2057-12-01 3.50 percent eff. 2026-03-06; switch can move the printed yield with no market move | BoC selected bond yields plus Notes on Canadian bond yields plus bench_CDN.pdf (fetched 2026-11-01) | High | Breaks page consumes a switch-log JSON derived from bench_CDN; every 2s10s slope chart annotates switch dates; 5-day post-switch window flagged never spliced |
+| Breaks DoD rule for polish: flag any absolute day-over-day benchmark yield move at or above 15 bp with no switch-log entry on that date as a break entry requiring explanation; below 15 bp is noise, at or above with a switch entry is explained rotation | Project DoD (orchestrator brief); BoC switch note that day-to-day change can reflect switch | High | Backend or page logic: `abs(y_t minus y_{t-1}) times 100 at or above 15 and no switch equals fail or break-row`; tester pins one synthetic 20 bp no-switch fail case and one switch-explained pass case |
+| Holiday-thinned handling follows joint calendar: CA leg BoC Schedule I open days, US leg SIFMA bond recommendations (recommendations only, firms decide); one-sided holidays drop from the join with no forward fill; examples Columbus Day 2026-10-12 full SIFMA close with NYSE open, Veterans Day 2026-11-11 full close | SIFMA holiday schedule plus 2026-09-29 Columbus Day and 2026-10-28 Veterans Day recommendations; Phase 1 calendar finding; movertape 2026-10-26 cross-check | High | Breaks page marks holiday-thinned sessions (early close 14:00 ET, Columbus and Veterans full closes); spreads require common joint business days; verify V16 asserts no forward fill |
+| Revision diffs distinguish upstream revision from local bug: StatCan trim and median revise (3y each January plus 1m otherwise), FRED DGS never revised, BoC yields unrevised prints with issue rotation; hash equality on bulk zip separates bug (same hash, replica differs) from revision (hash changed) | StatCan Daily Jan-2026 plus 2301_D64_T9_V3 Note 9; FRED DGS docs; Phase 4 bulk-hash rule | High | Breaks and inflation pages show revision diff (vintage value versus current 0256) with zip sha12; verify V22 recomputes MAE and flag match while passing either way |
+| Verification page must be verify.json driven: show `passed`, `passed_count of checks.length`, `tolerance_bp plus tolerance_unit`, per-check id plus state plus detail with units, plus `snapshot_sha256`; build-data already refuses to publish on manifest digest mismatch, missing manifest or verify, bad JSON, snapshot_date mismatch, or `verify.snapshot_sha256` mismatch | Live snapshots/2026-10-30/verify.json (22 checks, tolerance 1.0 basis_points, sha eae33396); web/scripts/build-data.mjs Phase 1 plus Phase 2 gates | High | VerificationPage reads only verify.json fields; blocking banner when `passed` false or fetch error; demo a known-bad fixture (tampered yield) that fails V13 or V11 to prove the gate can fail |
+| Fail-closed demo pattern: a check that cannot fail is a comment; proof-carrying display marks only claim-checked numbers verified and blocks derived displays on failure with named reasons, stale never silent | World Bank PCN protocol; Kymira verification and anchoring; Lotus fail-closed docs; Phase 3 fail-closed UI rule | Medium | Add a methods plus verification note plus tester case: feed known-bad snapshot, confirm red FAIL banner and disabled deltas and charts with NA plus reason |
+| Methods page must state every v1 limit in plain language: par approx not zero, NSS dropped, carry 1M on unchanged curve ex coupon and ex funding, spreads same-day plus lagged-1d with close-time disclosure, backtest illustrative fixed rule with zero costs, CPI experimental reuse-SA with MAE gate that flags but never blocks, attribution BoC plus OGL plus StatCan plus FRED, no forecasts | Phase 2 par-approx-logdiscount-PCHIP-v1 plus D09 to D14 plus D20 to D24; Treasury MC note (why v1 stays par approx); BoC MLES note (why zero curve deferred) | High | Methods page ledger cards with one sentence per limit plus method id, tolerance, and sha line; tech-lead owns wording, tester asserts each sentence present |
+| Close-time disclosure anchors spreads: BoC benchmark mid-market closes (CanDeal DNA), H.15 about 16:15 ET with FRED T+1 morning ingest, CORRA value date T published T+1 about 09:00 ET; same-day spread compares different close vintages so lagged-1d spread is the like-for-like comparator | BoC selected yields sources line; FRED H.15 timing; BoC CORRA methodology | High | Methods spreads card states both legs plus times; snapshot stores `ca_us_same_day` and `ca_us_lagged_1d` join keys |
+| Attribution and licence: BoC Valet data under BoC Terms of Use, StatCan bulk under Statistics Canada Open Licence, FRED H.15 via FRED API, SIFMA schedule by recommendation; footer links to source plus retrieval date | BoC Terms of Use; StatCan Open Licence; SIFMA recommendation disclaimer; FRED API terms | High | Methods attribution card plus footer source links; no forecast language anywhere (past moves not forecasts) |
+
+### Relevant Equations
+| Equation | Description | Variables |
+|----------|-------------|-----------|
+| `dod_bp = (y_t minus y_{t-1}) times 100` | Day-over-day benchmark move in bp | y in percent, t joint business days |
+| `break = (abs(dod_bp) at or above 15) and (no switch-log entry on t)` | Break-entry rule for polish | 15 bp threshold, switch log from bench_CDN effective dates |
+| `age_biz = joint-biz-days(asof, now)` | Staleness in business days for banner | asof snapshot date, calendar legs |
+| `state = pass if verify.passed else fail; block = not passed or fetch-error or stale-critical` | Verify gating for derived displays | verify.json passed boolean, banner state |
+| `carry_1M approx y(T) times h plus (y(T minus h_curve) minus y(T))` with h = 1/12, unchanged curve | Simplified carry-roll ex coupon ex funding | y percent decimal, h years, curve frozen at t |
+| `core_y/y_t = (prod_{s=t-11..t}(1 plus core_m/m_s / 100) minus 1) times 100` | Annual core by compounding 12 monthlies | core in {trim, median}; never mean of 12 |
+| `resid_t = replica_t minus published_vintage_t; MAE = mean(abs(resid))` | CPI validation residual and gate metric | replica versus 0259 vintage, gate 0.10 pp flags but never blocks |
+| `sha_publish = sha256(raw snapshot.json bytes); publish iff sha equals manifest plus verify.snapshot_sha256` | Content-hash publish gate | raw bytes, hex digest, manifest plus verify copies |
+
+### Validation Data
+| Benchmark | Value | Source | Uncertainty |
+|-----------|-------|--------|-------------|
+| Current benchmarks eff. dates Oct 2026 | 2Y 2028-11-01 3.00 percent (2026-10-23); 3Y 2029-09-01 3.50 percent (2026-10-23); 10Y 3.87 percent on 2026-10-28 decision day | BoC selected yields page (fetched 2026-11-01) | Daily mid-market close, CanDeal DNA; rotates after last auction |
+| BoC policy 2026-10-28 | Plus 25 bp to 2.50 percent; 2Y 3.41 percent, 10Y 3.87 percent that day | BoC FAD press release 2026-10-28; Investing.com recap | Market prints move intraday; page shows closes only |
+| Live verify 2026-10-30 | 22 of 22 pass, tolerance 1.0 basis_points, sha eae33396; V16/V18 missing with FRED degraded, V19 to V22 skipped with CPI degraded | snapshots/2026-10-30/verify.json plus build-data.mjs | Degraded legs expected without FRED key and CPI bulk; gate still pass with skip notes |
+| SIFMA 2026 closes | Columbus Day 2026-10-12 full close (NYSE open); Veterans Day 2026-11-11 full close; early closes 14:00 ET (Good Friday noon exception) | SIFMA schedule plus 2026-09-29 and 2026-10-28 notices; calendarhours cross-check | Recommendations only; firms decide; settlement times separate |
+| CPI Sep 2026 anchor | Headline 3.1 percent, trim 1.8 percent, median 1.9 percent | BoC CPI page; TD 2026-10-19 | Revisable core vintages |
+| MAE gate | 0.10 pp over trailing 36 months with 24 minimum; flag but never block | D22 plus Phase 4 validation | Upstream revision moves vintages; hash separates bug from revision |
+
+### Practical Implications
+- Breaks page: render switch-log table (issue plus effective date per tenor), slope chart with switch markers and 5-day shaded regime flags, DoD table with 15 bp break column, holiday-thinned badges from joint calendar, and revision-diff panel linking bulk sha12 to 0256 versus 0259 vintage values.
+- Verification page: bind every line to verify.json (counts, tolerance plus unit, per-check detail with units, snapshot_sha256 with short plus full copy); on `passed` false or fetch error show blocking red banner naming failed check ids and disable deltas and charts to NA with reasons; add one demonstrable fail fixture (for example 20 bp no-switch tamper) in tests or a methods footnote proving the gate trips.
+- Methods page: ship seven ledger cards (curve par-approx plus NSS dropped, carry 1M ex coupon ex funding, spreads same-day plus lagged with close times, backtest fixed rule DV01-neutral gross only, CPI experimental reuse-SA plus MAE flag, verification tolerance plus method plus SHA, attribution plus no-forecasts); each card names the method id and the limit in one sentence.
+- Snapshot and pipeline: store `benchmark_switch` flags from bench_CDN dates, `ca_us_same_day` and `ca_us_lagged_1d` spreads with close-time notes, carry with `horizon_years` and ex-coupon flag, CPI bulk sha256 plus sha12 plus link-month vintage, and manifest plus verify digests that build-data re-verifies before publish.
+- Tester inputs from this research: switch-date annotation on 2026-10-23 rotation, synthetic 15 bp no-switch fail versus switch-explained pass, Columbus Day thinned-session badge, invalid `?asof=` unknown-date banner, tampered-snapshot verify FAIL with blocked deriveds, methods sentence presence check for par-approx, NSS, carry, spreads, backtest, CPI experimental, attribution, and no-forecasts.
+
+### Citations
+1. Bank of Canada, "Selected bond yields" (benchmark definitions, switch note, current issues plus effective dates, CanDeal DNA source) - https://www.bankofcanada.ca/rates/interest-rates/canadian-bonds
+2. Bank of Canada, bench_CDN.pdf benchmark issues plus effective dates - https://www.bankofcanada.ca/stats/assets/pdf/bench_CDN.pdf
+3. Bank of Canada, "Yield curves for zero-coupon bonds" (MLES weekly Thursday with two-week lag) - https://www.bankofcanada.ca/rates/interest-rates/bond-yield-curves
+4. US Treasury, "Treasury Yield Curve Methodology" (monotone convex par since 2021-12-06) - https://home.treasury.gov/policy-issues/financing-the-government/interest-rate-statistics/treasury-yield-curve-methodology
+5. SIFMA, "Holiday Schedule" (recommendations-only disclaimer) - https://www.sifma.org/resources/guides-playbooks/holiday-schedule
+6. SIFMA, Columbus Day 2026-09-29 and Veterans Day 2026-10-28 full-close recommendations
+7. Statistics Canada, "The Bank of Canada's Preferred Measures of Core Inflation Methodology Document" 2301_D64_T9_V3 (55 items, SA reuse, trim plus median steps, compounding, revision Note 9)
+8. Statistics Canada, Daily CPI Jan-2026 (3y plus 1m revision rule, GST break Dec14 2024 to Feb15 2025) and Daily Jan-2024 (1-decimal coherence)
+9. FRED API docs, "Real-Time Periods" and H.15 16:15 ET plus T+1 ingest (DGS never revised)
+10. Bank of Canada, "Methodology for calculating CORRA" (T+1 value-date lag, trimmed median, fallback rule)
+11. Bank of Canada Terms of Use; Statistics Canada Open Licence; FRED API Terms of Use
+12. World Bank PCN, "Proof-Carrying Numbers" (fail-closed verified marks) - https://github.com/worldbank/pcn
+13. Kymira, "Verification and anchoring" (reconcile to file totals, prove the check can fail) - https://kymira.ai/features/verification
+14. Project live evidence: snapshots/2026-10-30/verify.json (22 of 22, 1.0 basis_points, sha eae33396) and web/scripts/build-data.mjs (manifest plus verify digest gates with stale prune)
+
+### Verification Checklist
+- [x] Findings are from reputable sources
+- [x] Equations are correctly transcribed
+- [x] Validation data includes uncertainty
+- [x] Practical implications are actionable
+- [x] All sources cited
+- [x] Research supports phase architecture decisions

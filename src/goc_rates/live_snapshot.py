@@ -170,13 +170,18 @@ def build_live_observations(
     fred_by_series: dict[str, list[Any]],
     fred_available: bool,
     statcan_vectors: dict[str, Any] | None,
+    switch_feed: Any | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     """Build observations, provenance, and warnings from fetched histories."""
     from goc_rates.analytics import canada_us_spread_bp, carry_roll_bp, inner_join_dates, slope_bp
     from goc_rates.backtest import run_backtest
+    from goc_rates.breaks import BENCH_CDN_URL, build_breaks_section
     from goc_rates.curve import build_curve_section
     from goc_rates.models import make_missing, make_quantity
     from goc_rates.risk import dv01_per_million, modified_duration, par_bond_price
+
+    if switch_feed is None:
+        raise ValueError("switch feed is required, refusing a silent pass without breaks")
 
     warnings: list[str] = []
     date_text = snapshot_date.isoformat()
@@ -430,6 +435,9 @@ def build_live_observations(
             "reason": BACKTEST_DEGRADED_REASON,
         }
 
+    breaks_section = build_breaks_section(snapshot_date, target_print, ca_histories, switch_feed)
+    observations["breaks"] = breaks_section
+
     provenance: dict[str, Any] = {
         "valet": {
             "source_url": VALET_GROUP_URL,
@@ -440,6 +448,12 @@ def build_live_observations(
             "source_url": FRED_SERIES_URL,
             "retrieved_utc": _retrieved_utc_now(),
             "vintage": fred_latest if fred_latest is not None else date_text,
+        },
+        "benchmark_switches": {
+            "source_url": BENCH_CDN_URL,
+            "retrieved_utc": _retrieved_utc_now(),
+            "vintage": breaks_section["feed_vintage"],
+            "sha256": breaks_section["feed_sha256"],
         },
     }
     if statcan_vectors is not None:
@@ -494,6 +508,18 @@ def run_live_snapshot(
     }
 
     try:
+        from goc_rates.breaks import load_switch_feed
+
+        switch_path = (
+            Path(config_path).parent / "benchmark_switches.yaml"
+            if config_path
+            else Path("config/benchmark_switches.yaml")
+        )
+        try:
+            switch_feed = load_switch_feed(switch_path)
+        except (ValueError, OSError) as exc:
+            print(f"switch feed failed: {exc}", file=sys.stderr)
+            return _write_skeleton_fallback(snapshot_date, benchmark_map, directory, str(exc))
         api_key = read_api_key()
         cpi_config: Any | None = None
         cpi_bulk: dict[str, BulkTable] = {}
@@ -562,6 +588,7 @@ def run_live_snapshot(
             fred_by_series,
             fred_available,
             statcan_vectors,
+            switch_feed,
         )
         if cpi_fetch_error is not None:
             print(f"CPI degraded, omitting inflation: {cpi_fetch_error}", file=sys.stderr)

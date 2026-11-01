@@ -1,4 +1,4 @@
-"""Verification checks V01 to V22 with a 1.0 basis point tolerance."""
+"""Verification checks V01 to V23 with a 1.0 basis point tolerance."""
 
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def run_checks(
     expected_labels: dict[str, str] | None = None,
     fred_api_key: str | None = None,
 ) -> list[CheckResult]:
-    """Run checks V01 to V22 against a snapshot document."""
+    """Run checks V01 to V23 against a snapshot document."""
     results: list[CheckResult] = []
     metadata = snapshot.get("metadata")
     observations = snapshot.get("observations")
@@ -387,6 +387,7 @@ def run_checks(
 
     results.extend(_run_phase2_checks(snapshot, tolerance_bp, fred_api_key))
     results.extend(_run_phase4_checks(snapshot))
+    results.extend(_run_phase5_checks(snapshot, tolerance_bp))
 
     return results
 
@@ -402,7 +403,16 @@ def _derived_quantities(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(observations, dict):
         return []
     collected: list[dict[str, Any]] = []
-    for key in ("curve", "derived", "spreads", "canada_us_spreads", "carry", "risk", "backtest"):
+    for key in (
+        "curve",
+        "derived",
+        "spreads",
+        "canada_us_spreads",
+        "carry",
+        "risk",
+        "backtest",
+        "breaks",
+    ):
         section = observations.get(key)
         if isinstance(section, (dict, list)):
             collected.extend(_quantities(section))
@@ -1221,6 +1231,265 @@ def _run_phase4_checks(snapshot: dict[str, Any]) -> list[CheckResult]:
         )
     except (ValueError, TypeError, ArithmeticError) as exc:
         results.append(CheckResult("V22", False, f"inflation label check failed: {exc}"))
+    return results
+
+
+def _breaks_section(snapshot: dict[str, Any]) -> Any:
+    """Return the breaks section dict or None."""
+    return _get_path(snapshot, "observations", "breaks")
+
+
+def _run_phase5_checks(
+    snapshot: dict[str, Any],
+    tolerance_bp: float = TOLERANCE_BP,
+) -> list[CheckResult]:
+    """Run check V23 for the Phase 5 benchmark switch day over day gate.
+
+    A present curve requires a present breaks section. The check pins the
+    feed digest grammar, tenor closure, recomputed joint effective dates,
+    calendar day over day deltas, recomputed gates, and nullness rules.
+    """
+    from goc_rates.breaks import (
+        BREAKS_GATES,
+        BREAKS_METHOD,
+        BREAKS_SOURCE_ID,
+        BREAKS_TENORS,
+        BREAKS_THRESHOLD_BP,
+        FEED_ALLOWED_TENORS,
+        FEED_SOURCE,
+        effective_joint_date,
+        normalize_tenor,
+    )
+    from goc_rates.calendar import is_business_day, previous_business_day
+    from goc_rates.limits import (
+        MAX_DOD_RECORDS,
+        MAX_HISTORY_OBS,
+        MAX_SWITCH_EVENTS,
+    )
+
+    results: list[CheckResult] = []
+    try:
+        observations_raw = snapshot.get("observations")
+        if not isinstance(observations_raw, dict):
+            raise ValueError("observations section is missing")
+        curve_section = observations_raw.get("curve")
+        breaks = observations_raw.get("breaks")
+        if not isinstance(curve_section, dict):
+            raise ValueError("curve section is missing, breaks cannot be assessed")
+        if not isinstance(breaks, dict):
+            raise ValueError("breaks section is missing beside a present curve")
+        if breaks.get("method") != BREAKS_METHOD:
+            raise ValueError(f"breaks method must be {BREAKS_METHOD}")
+        metadata = snapshot.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata section is missing")
+        snapshot_date_text = metadata.get("snapshot_date")
+        snapshot_day = _parse_date(snapshot_date_text)
+        if snapshot_day is None:
+            raise ValueError("metadata.snapshot_date is unparseable")
+        breaks_snapshot = _parse_date(breaks.get("snapshot_date"))
+        if breaks_snapshot is None:
+            raise ValueError("breaks snapshot_date is unparseable")
+        if breaks_snapshot != snapshot_day:
+            raise ValueError("breaks snapshot_date must match metadata.snapshot_date")
+        print_day = _parse_date(breaks.get("print_date"))
+        if print_day is None:
+            raise ValueError("breaks print_date is unparseable")
+        feed_source = breaks.get("feed_source")
+        if not isinstance(feed_source, str) or feed_source.strip() != FEED_SOURCE:
+            raise ValueError(f"breaks feed_source must pin {FEED_SOURCE}")
+        feed_vintage = _parse_date(breaks.get("feed_vintage"))
+        if feed_vintage is None:
+            raise ValueError("breaks feed_vintage is unparseable")
+        feed_digest = breaks.get("feed_sha256")
+        if not isinstance(feed_digest, str) or len(feed_digest.strip()) != 64:
+            raise ValueError("breaks feed_sha256 must be 64 hex chars")
+        try:
+            int(feed_digest.strip(), 16)
+        except ValueError:
+            raise ValueError("breaks feed_sha256 must be hex") from None
+        provenance = snapshot.get("provenance")
+        if not isinstance(provenance, dict):
+            raise ValueError("provenance section is missing")
+        switch_prov = provenance.get("benchmark_switches")
+        if not isinstance(switch_prov, dict):
+            raise ValueError("provenance benchmark_switches is missing")
+        for prov_key in ("source_url", "retrieved_utc", "vintage"):
+            value = switch_prov.get(prov_key)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"provenance benchmark_switches {prov_key} is missing")
+        prov_vintage = _parse_date(switch_prov.get("vintage"))
+        if prov_vintage is None or prov_vintage != feed_vintage:
+            raise ValueError("provenance benchmark_switches vintage must match breaks feed")
+        prov_digest = switch_prov.get("sha256")
+        if not isinstance(prov_digest, str) or prov_digest.strip() != feed_digest.strip():
+            raise ValueError("provenance benchmark_switches sha256 must match breaks feed")
+        threshold = _require_float(breaks.get("threshold_bp", ""), "threshold_bp")
+        if abs(threshold - BREAKS_THRESHOLD_BP) > 1e-12:
+            raise ValueError(f"breaks threshold must pin {BREAKS_THRESHOLD_BP}")
+        if str(breaks.get("threshold_unit", "")).strip() != "basis_points":
+            raise ValueError("breaks threshold_unit must be basis_points")
+        events_raw = breaks.get("events")
+        if not isinstance(events_raw, list) or not events_raw:
+            raise ValueError("breaks events are missing")
+        if len(events_raw) > MAX_SWITCH_EVENTS:
+            raise ValueError("breaks event count exceeds the cap before recompute")
+        seen_events: set[tuple[str, str]] = set()
+        joint_by_tenor: dict[str, list[dt.date]] = {tenor: [] for tenor in BREAKS_TENORS}
+        for row in events_raw:
+            if not isinstance(row, dict):
+                raise ValueError("breaks event rows must be mappings, no filtering")
+            tenor_raw = row.get("tenor")
+            if not isinstance(tenor_raw, str) or tenor_raw.strip() not in FEED_ALLOWED_TENORS:
+                raise ValueError("breaks event tenor is outside the closed feed set")
+            tenor = tenor_raw.strip()
+            effective = _parse_date(row.get("effective_date"))
+            joint = _parse_date(row.get("effective_joint_date"))
+            if effective is None or joint is None:
+                raise ValueError("breaks event dates are unparseable")
+            expected_joint = effective_joint_date(effective)
+            if joint != expected_joint:
+                raise ValueError("breaks effective_joint_date does not recompute")
+            event_key = (tenor, effective.isoformat())
+            if event_key in seen_events:
+                raise ValueError(f"duplicate breaks event: {event_key}")
+            seen_events.add(event_key)
+            for name in ("incoming_maturity", "outgoing_maturity"):
+                maturity = row.get(name)
+                if maturity is not None and _parse_date(maturity) is None:
+                    raise ValueError(f"breaks event {name} must be ISO or null")
+            for name in ("incoming_coupon_percent", "outgoing_coupon_percent"):
+                coupon = row.get(name)
+                if coupon is not None:
+                    _require_float(coupon, name)
+            joint_by_tenor.setdefault(normalize_tenor(tenor), []).append(joint)
+        records_raw = breaks.get("records")
+        if not isinstance(records_raw, list) or not records_raw:
+            raise ValueError("breaks records are missing")
+        if len(records_raw) != len(BREAKS_TENORS):
+            raise ValueError(f"breaks records must hold {len(BREAKS_TENORS)} tenors")
+        if len(records_raw) > MAX_DOD_RECORDS:
+            raise ValueError("breaks record count exceeds the cap before recompute")
+        labels = [
+            str(item.get("tenor", "")) if isinstance(item, dict) else "" for item in records_raw
+        ]
+        if labels != list(BREAKS_TENORS):
+            raise ValueError(f"breaks tenor set must be {list(BREAKS_TENORS)}, got {labels}")
+        worst = 0.0
+        for record in records_raw:
+            if not isinstance(record, dict):
+                raise ValueError("breaks records must be mappings, no filtering")
+            tenor = str(record.get("tenor", "")).strip()
+            if tenor not in BREAKS_TENORS:
+                raise ValueError("breaks record tenor is outside the closure")
+            prev_day = _parse_date(record.get("prev_date"))
+            current_day = _parse_date(record.get("current_date"))
+            if prev_day is None or current_day is None:
+                raise ValueError("breaks record dates are unparseable")
+            if current_day != print_day:
+                raise ValueError("breaks record current_date must match print_date")
+            if not current_day > prev_day:
+                raise ValueError("breaks record current_date must exceed prev_date")
+            prev_yield = record.get("prev_yield_percent")
+            current_yield = record.get("current_yield_percent")
+            for name, value in (
+                ("prev_yield", prev_yield),
+                ("current_yield", current_yield),
+            ):
+                if value is not None:
+                    _require_float(value, name)
+            history_count = record.get("history_count")
+            if isinstance(history_count, bool) or not isinstance(history_count, int):
+                raise ValueError("breaks history_count must be an int without coercion")
+            if history_count < 0 or history_count > MAX_HISTORY_OBS:
+                raise ValueError("breaks history_count is outside the bounded range")
+            switch_flag = record.get("switch_in_window")
+            gap_flag = record.get("calendar_gap")
+            if not isinstance(switch_flag, bool) or not isinstance(gap_flag, bool):
+                raise ValueError("breaks flags must be bools without coercion")
+            gate = record.get("gate")
+            if not isinstance(gate, str) or gate not in BREAKS_GATES:
+                raise ValueError("breaks gate is outside the closed set")
+            expected_prev = previous_business_day(current_day, "joint")
+            expected_gap = (prev_day != expected_prev) or (
+                not is_business_day(current_day, "joint")
+            )
+            if gap_flag != expected_gap:
+                raise ValueError("breaks calendar_gap does not recompute")
+            expected_switch = any(
+                prev_day < joint <= current_day
+                for joint in joint_by_tenor.get(normalize_tenor(tenor), [])
+            )
+            if switch_flag != expected_switch:
+                raise ValueError("breaks switch_in_window does not recompute")
+            prev_number = (
+                None if prev_yield is None else _require_float(prev_yield, "prev_yield_percent")
+            )
+            current_number = (
+                None
+                if current_yield is None
+                else _require_float(current_yield, "current_yield_percent")
+            )
+            if history_count < 2:
+                expected_gate = "insufficient_history"
+            elif prev_number is None or current_number is None:
+                expected_gate = "missing_prev"
+            elif expected_switch:
+                expected_gate = "switch_break"
+            elif expected_gap:
+                expected_gate = "calendar_gap"
+            else:
+                expected_gate = "comparable"
+            if gate != expected_gate:
+                raise ValueError("breaks gate does not recompute from classify_gate")
+            stored_dod = record.get("dod_bp")
+            if gate in ("switch_break", "missing_prev", "insufficient_history"):
+                if stored_dod is not None:
+                    raise ValueError(f"breaks gate {gate} must suppress dod_bp to null")
+            else:
+                if stored_dod is None:
+                    raise ValueError(f"breaks gate {gate} must keep a numeric dod_bp")
+                assert prev_number is not None and current_number is not None
+                expected_dod = (current_number - prev_number) * 100.0
+                stored_number = _require_float(stored_dod, "dod_bp")
+                worst = max(worst, abs(expected_dod - stored_number))
+            if str(record.get("dod_unit", "")).strip() != "basis_points":
+                raise ValueError("breaks dod_unit must be basis_points")
+            quantity = record.get("dod_quantity")
+            if not isinstance(quantity, dict):
+                raise ValueError("breaks dod_quantity must be a mapping")
+            if str(quantity.get("unit", "")).strip() != "basis_points":
+                raise ValueError("breaks dod_quantity unit must be basis_points")
+            if str(quantity.get("source_id", "")) != BREAKS_SOURCE_ID:
+                raise ValueError(f"breaks dod_quantity source must be {BREAKS_SOURCE_ID}")
+            quality = quantity.get("quality")
+            if quality not in ("observed", "missing"):
+                raise ValueError("breaks dod_quantity quality must be observed or missing")
+            quantity_value = quantity.get("value")
+            if stored_dod is None:
+                if quantity_value is not None or quality != "missing":
+                    raise ValueError("null dod_bp needs a missing null quantity")
+            else:
+                if quality != "observed":
+                    raise ValueError("numeric dod_bp needs an observed quantity")
+                if abs(_require_float(quantity_value, "dod_quantity") - stored_number) > 1e-9:
+                    raise ValueError("breaks dod_quantity must match dod_bp")
+            if str(record.get("source_id", "")) != BREAKS_SOURCE_ID:
+                raise ValueError(f"breaks record source must be {BREAKS_SOURCE_ID}")
+        if worst > tolerance_bp:
+            raise ValueError(f"breaks dod recompute worst {worst:.4f} exceeds {tolerance_bp} bp")
+        results.append(
+            CheckResult(
+                "V23",
+                True,
+                f"breaks {BREAKS_METHOD} with {len(records_raw)} tenors, "
+                f"dod worst {worst:.4f} bp within {tolerance_bp} bp, "
+                f"threshold {BREAKS_THRESHOLD_BP} bp, feed {feed_vintage.isoformat()} "
+                f"sha {feed_digest.strip()[:12]} (unit: mixed)",
+            )
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        results.append(CheckResult("V23", False, f"breaks integrity failed: {exc}"))
     return results
 
 

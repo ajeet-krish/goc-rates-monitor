@@ -1,4 +1,4 @@
-"""Verification tests: V01 to V22 checks with a 1.0 basis point tolerance."""
+"""Verification tests: V01 to V23 checks with a 1.0 basis point tolerance."""
 
 import datetime as dt
 import json
@@ -106,7 +106,31 @@ def _passing_snapshot() -> dict[str, Any]:
     provenance = snapshot["provenance"]
     assert isinstance(observations, dict) and isinstance(provenance, dict)
     attach_demo_inflation(observations, provenance)
+    _attach_demo_breaks(observations, provenance)
     return snapshot
+
+
+def _attach_demo_breaks(observations: dict[str, Any], provenance: dict[str, Any]) -> None:
+    """Attach a passing breaks section plus provenance for V23."""
+    from pathlib import Path as _Path
+
+    from goc_rates.breaks import build_breaks_section, load_switch_feed
+
+    feed_path = _Path(__file__).resolve().parent.parent / "config" / "benchmark_switches.yaml"
+    feed = load_switch_feed(feed_path)
+    histories = {
+        "2Y": {"2026-10-29": 3.27, "2026-10-30": 3.32},
+        "5Y": {"2026-10-29": 3.57, "2026-10-30": 3.62},
+        "10Y": {"2026-10-29": 3.85, "2026-10-30": 3.9},
+        "30Y": {"2026-10-29": 4.14, "2026-10-30": 4.19},
+    }
+    observations["breaks"] = build_breaks_section("2026-10-30", "2026-10-30", histories, feed)
+    provenance["benchmark_switches"] = {
+        "source_url": "https://www.bankofcanada.ca/stats/assets/pdf/bench_CDN.pdf",
+        "retrieved_utc": "2026-10-31T00:00:00Z",
+        "vintage": feed.feed_vintage.isoformat(),
+        "sha256": feed.feed_sha256,
+    }
 
 
 def test_tolerance_is_one_basis_point() -> None:
@@ -120,10 +144,10 @@ def test_tbill_price_inversion_matches_formula() -> None:
 
 
 def test_passing_snapshot_passes_all_checks() -> None:
-    """A complete snapshot passes V01 to V22."""
+    """A complete snapshot passes V01 to V23."""
     report = verify_snapshot(_passing_snapshot())
     assert report["passed"] is True
-    assert len(report["checks"]) == 22
+    assert len(report["checks"]) == 23
     assert report["failed_count"] == 0
     assert report["tolerance_unit"] == "basis_points"
 

@@ -20,6 +20,7 @@ export default function InflationPage(props: Props) {
   const vintage = () => inflation()?.weight_vintage ?? null;
   const validation = () => inflation()?.validation ?? null;
   const bulkEntries = () => Object.entries(inflation()?.bulk ?? {});
+  const flagState = () => (validation()?.exceeds_gate ? "fail" : "pass");
   return (
     <section aria-label="Inflation">
       <p class="hero-kicker">Inflation: experimental trim and median</p>
@@ -46,10 +47,11 @@ export default function InflationPage(props: Props) {
               {String(inflation()?.is_official)}, method {inflation()?.method}. Trim{" "}
               {inflation()?.latest.trim_yoy.value} percent YoY, median{" "}
               {inflation()?.latest.median_yoy.value} percent YoY for{" "}
-              {inflation()?.reference_month}.
+              {inflation()?.reference_month}. Publisher prints are final.
+              Replica prints revise and stay labelled experimental.
             </p>
           </div>
-          <div class="ledger-card">
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Decomposition (percentage points)</h2>
             <table>
               <thead>
@@ -78,18 +80,41 @@ export default function InflationPage(props: Props) {
               Total {inflation()?.total_contribution_pp.toFixed(3)} pp, headline{" "}
               {inflation()?.headline_mom.value} percent per month, kept weight{" "}
               {inflation()?.kept_weight_fraction.toFixed(2)}, excluded{" "}
-              {inflation()?.excluded_weight_fraction.toFixed(2)}.
+              {inflation()?.excluded_weight_fraction.toFixed(2)}. Each row
+              recomputes as weight times rate over 100 within 0.01 pp.
             </p>
           </div>
-          <div class="ledger-card">
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
+            <h2>Tax window flag (2024-12 to 2026-03)</h2>
+            <p>
+              GST holiday ran December 2024 to February 2025, the tax left in
+              March 2025, and restoration lands March 2026. Replica months
+              inside 2024-12 to 2026-03 carry the tax window flag and stay
+              experimental and revisable.
+            </p>
+            <p class="figure-caption">
+              Publisher headline absorbs the same window as final. The replica
+              never smooths through it, it flags it.
+            </p>
+          </div>
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Validation flag</h2>
+            <p>
+              <span class="badge" data-state={flagState()}>
+                {validation()?.flag}
+              </span>
+            </p>
             <p class="num">
-              {validation()?.flag}: MAE {validation()?.trim.mae_pp.toFixed(4)} pp vs gate{" "}
+              MAE {validation()?.trim.mae_pp.toFixed(4)} pp vs gate{" "}
               {validation()?.gate_pp} pp over {validation()?.months} months
             </p>
-            <p class="figure-caption">{validation()?.note}</p>
+            <p class="figure-caption">
+              {validation()?.note} The flag is honest either way and never
+              blocks the build: within_gate or exceeds_gate_needs_explanation
+              both pass when the flag matches the recompute.
+            </p>
           </div>
-          <div class="ledger-card">
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Weight vintage and bulk hashes</h2>
             <p class="num">
               expenditure {vintage()?.expenditure_year}, link month{" "}
@@ -99,11 +124,12 @@ export default function InflationPage(props: Props) {
               <For each={bulkEntries()}>
                 {([name, entry]) => (
                   <span>
-                    {name} {entry.product_id} sha {entry.zip_sha12}.{" "}
+                    {name} {entry.product_id} sha12 {entry.zip_sha12}.{" "}
                   </span>
                 )}
               </For>
-              Seasonally adjusted values reused as published.
+              Seasonally adjusted values reused as published. Short sha12 prefixes
+              match the leading 12 hex of each stored sha256.
             </p>
           </div>
         </Show>

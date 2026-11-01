@@ -40,8 +40,8 @@ Keep functions small and pure where practical.
 | Phase 2 | Curve engine par approx slopes carry spreads | Complete |
 | Phase 3 | Site shell curve funding verification pages | Complete |
 | Phase 4 | CPI engine trim median validation | Complete |
-| Phase 5 | Inflation breaks verification methods polish | In Progress |
-| Phase 6 | True bootstrap with benchmark map post launch | Planned |
+| Phase 5 | Inflation breaks verification methods polish | Complete |
+| Phase 6 | True bootstrap with benchmark map post launch | In Progress |
 
 ## Deep Docs
 

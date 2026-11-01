@@ -1,0 +1,52 @@
+# Benchmark switch feed pinned from bench_CDN.pdf (schema 1).
+#
+# Feed vintage 2026-11-01. Each event records the incoming benchmark issue
+# for a tenor with its effective date. Outgoing issue fields stay null where
+# unknown and are never fabricated. The 5Y 2031-09-01 3.00 percent entry is
+# pinned once; the duplicate listing from the brief is deduped here.
+schema_version: 1
+source: bench_CDN.pdf
+feed_vintage: 2026-11-01
+events:
+- tenor: 2Y
+  effective_date: 2026-08-06
+  incoming_maturity: 2028-08-01
+  incoming_coupon_percent: 2.75
+  outgoing_maturity: null
+  outgoing_coupon_percent: null
+- tenor: 5Y
+  effective_date: 2026-09-10
+  incoming_maturity: 2031-09-01
+  incoming_coupon_percent: 3.0
+  outgoing_maturity: null
+  outgoing_coupon_percent: null
+- tenor: 10Y
+  effective_date: 2026-06-23
+  incoming_maturity: 2036-06-01
+  incoming_coupon_percent: 3.25
+  outgoing_maturity: null
+  outgoing_coupon_percent: null
+- tenor: LONG
+  effective_date: 2026-03-06
+  incoming_maturity: 2057-12-01
+  incoming_coupon_percent: 3.5
+  outgoing_maturity: null
+  outgoing_coupon_percent: null
+- tenor: 2Y
+  effective_date: 2026-10-23
+  incoming_maturity: 2028-11-01
+  incoming_coupon_percent: 3.0
+  outgoing_maturity: null
+  outgoing_coupon_percent: null
+- tenor: 3Y
+  effective_date: 2026-10-23
+  incoming_maturity: 2029-09-01
+  incoming_coupon_percent: 3.5
+  outgoing_maturity: null
+  outgoing_coupon_percent: null
+- tenor: 7Y
+  effective_date: 2026-09-10
+  incoming_maturity: 2033-06-01
+  incoming_coupon_percent: 2.75
+  outgoing_maturity: null
+  outgoing_coupon_percent: null

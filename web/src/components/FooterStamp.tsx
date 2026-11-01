@@ -8,6 +8,10 @@ interface Props {
   sha: string | undefined;
   verify: VerifyReport | null;
   curveMethod: string | null;
+  inflationMethod: string | null;
+  breaksMethod: string | null;
+  feedVintage: string | null;
+  checkedUtc: string | undefined;
   unknownDate?: string | null;
 }
 
@@ -49,6 +53,20 @@ export default function FooterStamp(props: Props) {
           {label()}
         </span>
       </div>
+      <div class="stamp-row">
+        <span>
+          checked <span class="num">{props.checkedUtc ?? "checked time unknown"}</span> UTC
+        </span>
+        <span>
+          inflation method <span class="num">{props.inflationMethod ?? "method unknown"}</span>
+        </span>
+        <span>
+          breaks method <span class="num">{props.breaksMethod ?? "method unknown"}</span>
+        </span>
+        <span>
+          feed vintage <span class="num">{props.feedVintage ?? "vintage unknown"}</span>
+        </span>
+      </div>
       <Show when={props.unknownDate}>
         <div class="stamp-row">
           <span>
@@ -60,6 +78,8 @@ export default function FooterStamp(props: Props) {
       <div class="stamp-row">
         <A href="/verification">Read verification checks</A>
         <A href="/methods">Read curve method and limits</A>
+        <A href="/breaks">Read breaks register</A>
+        <A href="/inflation">Read inflation vintage</A>
       </div>
     </footer>
   );

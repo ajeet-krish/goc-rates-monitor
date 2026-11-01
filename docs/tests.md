@@ -2,6 +2,53 @@
 
 Last updated: 2026-11-01
 
+## 2026-11-01 - Phase 5 lows: Test Report
+
+Phase 5 breaks polish lows in `tests/test_phase5_lows.py` (14 tests)
+plus `web/tests/phase5-lows.test.mjs` (16 tests). Run with `uv run pytest`
+in `/Users/ajeet/Projects/goc-rates-monitor`, plus `npm test`,
+`npm run build`, and `npm run typecheck` in `web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (228 passed) | PASS | Full pipeline suite, 214 prior plus 14 new lows |
+| test_classify_gate_history_count_over_cap_rejects | PASS | 2001 rejects with bounded range |
+| test_classify_gate_history_count_at_cap_accepts | PASS | 2000 accepts as comparable |
+| test_classify_gate_history_count_bool_rejects | PASS | True rejects without coercion |
+| test_build_breaks_history_over_cap_rejects | PASS | 2001 obs history rejects on observation cap |
+| test_effective_joint_max_date_raises_value_error | PASS | date max raises ValueError not OverflowError |
+| test_effective_joint_non_date_rejects | PASS | String date rejects with must be a date |
+| test_load_feed_oversize_rejects_with_byte_cap | PASS | 64KB plus 1 byte rejects with byte cap |
+| test_load_feed_oversize_precheck_reports_declared_size | PASS | Oversize binary rejects on stat precheck with byte cap |
+| test_both_true_gate_is_switch_break_with_null | PASS | Both true is switch_break with null delta and missing quality |
+| test_v23_calendar_gap_null_fails | PASS | calendar_gap with null dod fails V23 keeps numeric rule |
+| test_v23_9y_record_tenor_fails | PASS | 9Y record tenor fails V23 closure |
+| test_v23_provenance_vintage_drift_fails | PASS | Drifted vintage fails provenance match |
+| test_v23_provenance_sha_mismatch_fails | PASS | Zeroed sha fails with sha256 detail |
+| test_verify_reports_23_checks_at_1bp | PASS | 23 checks V23 last tolerance 1.0 passing |
+| npm test web (130 passed) | PASS | 114 prior plus 16 new lows |
+| web rejects history_count over 2000 | PASS | 2001 rejects with 2000 cap |
+| web accepts history_count at exactly 2000 | PASS | Boundary 2000 passes |
+| web rejects boolean history_count | PASS | True rejects without coercion |
+| web holds switch_break null when both flags true | PASS | Both true with null passes |
+| web rejects calendar_gap that drops its number | PASS | calendar_gap null fails must keep numeric |
+| web rejects 9Y record tenor | PASS | 9Y fails tenor set pin |
+| web rejects drifted feed vintage | PASS | Wrong vintage fails 2026-11-01 pin |
+| web rejects wrong coupon and yield units | PASS | basis_points coupon and count yield fail percent rule |
+| web rejects provenance vintage and sha mismatch | PASS | Both fail must match breaks feed lines |
+| web pins 23 checks ending at V23 | PASS | EXPECTED_VERIFY_IDS length 23 V01 to V23 |
+| web rejects verify with 22 checks | PASS | Truncated report fails exactly 23 rule |
+| web covers V23 family with 1.0 bp tolerance | PASS | Fourth family V23 tolerance basis_points |
+| web renders unknown fallbacks in footer | PASS | method unknown vintage unknown tolerance unknown plus Unknown date line |
+| web states calendar versus business copy | PASS | calendar_days Toronto business_days V12 weekends line |
+| npm run build | PASS | vite build clean, all pages emitted |
+| npm run typecheck | PASS | tsc noEmit clean |
+| uv run ruff check src tests | PASS | All checks passed after line length and unused import fixes |
+
+Coverage summary: 228 passed (pytest) plus 130 passed (web), 0 failed. Happy path covered (both true switch_break null, 2000 boundary, 23 checks pass at 1.0 bp). Edge cases covered (2000 cap boundary, date max overflow path, stat precheck size, boolean history_count, both flags true). Error conditions covered (2001 history, oversize feed, non date joint, calendar_gap null, 9Y tenor, vintage drift, sha mismatch, 22 check report).
+
+Failure analysis: one interim ruff fault (line over 100 chars and two unused imports in the new test file) fixed in test code. Two product gaps closed before green. Web `validateSnapshot` lacked the 2000 history_count upper cap so 2001 passed while Python V23 rejected it; added `MAX_HISTORY_OBS` 2000 and an integer in [0, 2000] guard. `effective_joint_date` could surface `OverflowError` on calendar overflow near date max; wrapped the 16 day scan so overflow and year range both become `ValueError`. `load_switch_feed` read the full file before checking the 64KB cap; added a `stat` size precheck that rejects oversize before `read_bytes`. No other product defects found.
+
 ## 2026-11-02 - Phase 4: Test Report
 
 Phase 4 CPI engine suite in `tests/test_cpi_trim_median.py`,

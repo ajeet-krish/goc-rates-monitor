@@ -1,36 +1,151 @@
-export default function MethodsPage() {
+import { For, Show } from "solid-js";
+import SectionState from "../components/SectionState";
+import {
+  ASSUMPTION_ROWS,
+  CHECK_FAMILIES,
+  LIMIT_ROWS,
+  METHOD_SECTIONS,
+} from "../lib/methods-content";
+import type { SnapshotDoc, VerifyReport } from "../lib/types";
+
+interface Props {
+  snapshot: SnapshotDoc | null;
+  verify: VerifyReport | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export default function MethodsPage(props: Props) {
+  const curveMethod = () =>
+    props.snapshot?.observations.curve?.method ?? "method unknown";
+  const inflationMethod = () =>
+    props.snapshot?.observations.inflation?.method ?? "method unknown";
+  const breaksMethod = () =>
+    props.snapshot?.observations.breaks?.method ?? "method unknown";
   return (
     <section aria-label="Methods">
       <p class="hero-kicker">Methods: what v1 claims and what it does not</p>
       <h2 class="hero-headline">Par approx, stated plainly.</h2>
+      <p class="hero-dek">
+        This page renders the shared methods module, then pins the live method
+        ids, tolerance, and check count from the current snapshot and verify
+        report. Copy below is static and always readable, even when derived
+        displays are blocked.
+      </p>
       <div class="ledger-card">
-        <h2>Curve v1</h2>
-        <p>
-          Method <span class="num">par_approx_semiannual_log_discount_v1</span>.
-          Benchmark YTM inputs are treated as par approximations. Knot discounts use
-          D equals 1 over (1 plus y over 2) to the 2T. Log discounts interpolate
-          linearly. Ends hold the nearest yield flat. Long is a 30Y proxy.
-        </p>
-        <p>
-          No Nelson Siegel Svensson in v1. The 10s30s slope carries the largest
-          approximation error. Benchmark switches are flagged, never spliced.
+        <h2>
+          Live pins (tolerance {props.verify?.tolerance_bp ?? "unknown"}{" "}
+          {props.verify?.tolerance_unit ?? "tolerance unknown"}, checks{" "}
+          {props.verify?.checks.length ?? "unknown"})
+        </h2>
+        <SectionState
+          loading={props.loading}
+          error={props.error}
+          empty={false}
+        >
+          <table>
+            <caption>Pinned method ids and check families for this date</caption>
+            <thead>
+              <tr>
+                <th scope="col">Layer</th>
+                <th scope="col">Method</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Curve</td>
+                <td class="num">{curveMethod()}</td>
+              </tr>
+              <tr>
+                <td>Inflation</td>
+                <td class="num">{inflationMethod()}</td>
+              </tr>
+              <tr>
+                <td>Breaks</td>
+                <td class="num">{breaksMethod()}</td>
+              </tr>
+              <For each={CHECK_FAMILIES}>
+                {(family) => (
+                  <tr>
+                    <td>{family.range}</td>
+                    <td>
+                      {family.title}: {family.blurb}
+                    </td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </SectionState>
+        <p class="figure-caption">
+          Twenty three checks at 1.0 basis point tolerance. Any failure blocks
+          the build and turns derived values to NA.
         </p>
       </div>
+      <For each={METHOD_SECTIONS}>
+        {(section) => (
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
+            <p class="hero-kicker">{section.kicker}</p>
+            <h2>{section.title}</h2>
+            <p class="num">{section.method}</p>
+            <p>{section.summary}</p>
+            <ul>
+              <For each={section.points}>{(point) => <li>{point}</li>}</For>
+            </ul>
+            <Show when={section.limits.length > 0}>
+              <p class="figure-caption">Limits: {section.limits.join(" ")}</p>
+            </Show>
+          </div>
+        )}
+      </For>
       <div class="grid-two" style={{ margin: "16px 0" }}>
         <div class="ledger-card">
-          <h2>Carry and risk</h2>
-          <p>
-            Carry roll uses horizon 0.25 years, ex coupon and ex funding, on an
-            unchanged curve. Risk uses semiannual closed forms for price, modified
-            duration, and DV01 per million.
-          </p>
+          <h2>Assumptions and consequences</h2>
+          <table>
+            <caption>What v1 assumes and what follows</caption>
+            <thead>
+              <tr>
+                <th scope="col">Topic</th>
+                <th scope="col">Assumption</th>
+                <th scope="col">Consequence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={ASSUMPTION_ROWS}>
+                {(row) => (
+                  <tr>
+                    <td>{row.topic}</td>
+                    <td>{row.assumption}</td>
+                    <td>{row.consequence}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
         </div>
         <div class="ledger-card">
-          <h2>Verification</h2>
-          <p>
-            Eighteen checks V01 to V18 at 1.0 basis point tolerance. Any failure
-            blocks the build. Derived quantities carry units and a derived source.
-          </p>
+          <h2>Limits and rationale</h2>
+          <table>
+            <caption>Where v1 stops and why</caption>
+            <thead>
+              <tr>
+                <th scope="col">Topic</th>
+                <th scope="col">Limit</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={LIMIT_ROWS}>
+                {(row) => (
+                  <tr>
+                    <td>{row.topic}</td>
+                    <td>{row.limit}</td>
+                    <td>{row.rationale}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>

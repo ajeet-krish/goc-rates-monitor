@@ -1,6 +1,6 @@
 # goc-rates-monitor Architecture
 
-Last updated: 2026-11-02 (Phase 4)
+Last updated: 2026-11-02 (Phase 5)
 
 ## Purpose
 
@@ -141,3 +141,38 @@ and max from stored residuals, and requires the gate flag to match the
 recomputed outcome while passing either way. CPI caps live in
 `limits.py` (`MAX_CPI_COMPONENTS` 128, `MAX_CPI_MONTHS` 240, bulk byte
 and member caps).
+
+## Phase 5 breaks engine
+
+`src/goc_rates/breaks.py` implements `benchmark_switch_dod_gate_v1` from
+the pinned `config/benchmark_switches.yaml` feed (schema 1, source
+`bench_CDN.pdf`, vintage 2026-11-01). Each event pins a tenor, an
+effective date, an incoming maturity plus coupon, and null outgoing
+legs where unknown. The joint effective date is the first joint
+business day on or after the effective date via the calendar legs.
+`switch_in_window` tests `(prev, current]` per tenor with LONG mapped
+to 30Y. `classify_gate` returns `comparable`, `switch_break`,
+`calendar_gap`, `missing_prev`, or `insufficient_history`. A switch
+suppresses the day over day delta to null, a calendar gap keeps the
+delta with a flag, and missing legs stay null.
+
+`build_breaks_section` stores method, snapshot date, print date, feed
+source plus vintage plus sha256, threshold 15.0 bp with a
+`basis_points` unit, embedded events with recomputable joint dates,
+and four tenor records in 2Y, 5Y, 10Y, 30Y order. Each record carries
+prev and current dates plus yields in percent, `dod_bp` in basis
+points (null when suppressed), the gate, both flags, a history count,
+and a `dod_quantity` with source `derived:dod_gate`.
+
+## Verification
+
+Twenty three checks (V01 to V23). V23 pins the breaks section beside
+a present curve: method, snapshot plus print dates, feed source plus
+vintage plus 64 hex digest with provenance match, threshold 15.0 bp,
+closed tenor and gate sets, no duplicate events, recomputed joint
+dates, recomputed calendar gap from the previous joint day,
+recomputed switch flags, recomputed gates, day over day deltas within
+1.0 bp, and nullness rules (switch, missing, and short history stay
+null while comparable and gap keep numbers). Breaks caps live in
+`limits.py` (`MAX_SWITCH_EVENTS` 64, `MAX_DOD_RECORDS` 4,
+`MAX_SWITCH_FEED_BYTES` 65536).

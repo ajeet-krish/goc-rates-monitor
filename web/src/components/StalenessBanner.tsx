@@ -36,7 +36,9 @@ export function calendarAgeDays(latest: string, viewDate: string): number {
  * calendar days old and verification passes. Warns when the latest is 4
  * or more calendar days old, when no dates are published, or when
  * verification failed. Age is measured in calendar days from index.latest
- * to the view date in America/Toronto.
+ * to the view date in America/Toronto. This banner is a nudge only:
+ * check V12 enforces the 5 business day rule, weekends age this banner
+ * but never fail that check.
  */
 export default function StalenessBanner(props: StalenessBannerProps) {
   const viewDate = () => torontoViewDate(props.now ?? new Date());
@@ -82,7 +84,8 @@ export default function StalenessBanner(props: StalenessBannerProps) {
             Latest snapshot <span class="num">{props.latest}</span> is{" "}
             <span class="num">{ageDays() ?? 0} calendar_days</span> old as viewed in
             America/Toronto on <span class="num">{viewDate()}</span>. The desk treats 4 or more
-            calendar_days as stale.
+            calendar_days as stale. Check V12 separately enforces 5 business_days,
+            so weekends age this banner but never fail that check.
           </p>
         </Show>
         <Show when={verifyFailed()}>
