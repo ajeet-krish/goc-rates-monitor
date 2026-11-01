@@ -1,0 +1,37 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# SolidJS / Node
+node_modules/
+dist-ssr/
+dist-client/
+.output/
+.solid/
+vite.config.*.timestamp*
+*.local
+.npm/
+node/.vite/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Snapshots: keep snapshots/YYYY-MM-DD/*.json committed, ignore raw cache
+raw/
+*.raw.json
+cache/
