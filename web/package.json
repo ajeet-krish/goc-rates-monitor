@@ -9,7 +9,7 @@
     "prebuild": "npm run build:data",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --import ./tests/register.mjs tests/"
+    "test": "node --test --import ./tests/register.mjs \"tests/*.test.mjs\""
   },
   "dependencies": {
     "@solidjs/router": "^0.15.3",
