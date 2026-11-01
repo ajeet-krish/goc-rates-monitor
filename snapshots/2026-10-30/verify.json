@@ -1,0 +1,101 @@
+{
+  "checked_utc": "2026-11-01T02:57:06+00:00",
+  "checks": [
+    {
+      "detail": "canonical JSON round trip succeeded",
+      "id": "V01",
+      "passed": true
+    },
+    {
+      "detail": "snapshot_date 2026-10-30 parses",
+      "id": "V02",
+      "passed": true
+    },
+    {
+      "detail": "all 12 quantities carry a unit",
+      "id": "V03",
+      "passed": true
+    },
+    {
+      "detail": "benchmark labels asserted",
+      "id": "V04",
+      "passed": true
+    },
+    {
+      "detail": "T-bill price inversion diff 0.0000 bp (unit: bp)",
+      "id": "V05",
+      "passed": true
+    },
+    {
+      "detail": "CORRA 2026-10-29 to 2026-10-30",
+      "id": "V06",
+      "passed": true
+    },
+    {
+      "detail": "FRED T+1 lag note is recorded",
+      "id": "V07",
+      "passed": true
+    },
+    {
+      "detail": "StatCan SA values reused as published",
+      "id": "V08",
+      "passed": true
+    },
+    {
+      "detail": "vintage markers present",
+      "id": "V09",
+      "passed": true
+    },
+    {
+      "detail": "manifest sha256 matches raw bytes",
+      "id": "V10",
+      "passed": true
+    },
+    {
+      "detail": "cross source diff 0.0000 bp within 1.0 bp (unit: bp)",
+      "id": "V11",
+      "passed": true
+    },
+    {
+      "detail": "max age 1 business days (unit: business_days)",
+      "id": "V12",
+      "passed": true
+    },
+    {
+      "detail": "curve reprice worst 0.0000 bp within 1.0 bp (unit: bp)",
+      "id": "V13",
+      "passed": true
+    },
+    {
+      "detail": "discounts in (0, 1] and strictly decreasing with increasing tenors (unit: unitless_ratio)",
+      "id": "V14",
+      "passed": true
+    },
+    {
+      "detail": "all 8 derived quantities carry units and a derived source (unit: mixed)",
+      "id": "V15",
+      "passed": true
+    },
+    {
+      "detail": "spreads missing, FRED degraded without key (unit: bp)",
+      "id": "V16",
+      "passed": true
+    },
+    {
+      "detail": "carry diff 0.0000 bp within 1.0 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 100.0000, duration 4.5410 years, DV01 454.10 per million; unit: mixed)",
+      "id": "V17",
+      "passed": true
+    },
+    {
+      "detail": "backtest missing, FRED degraded without key (unit: bp)",
+      "id": "V18",
+      "passed": true
+    }
+  ],
+  "failed_count": 0,
+  "passed": true,
+  "passed_count": 18,
+  "snapshot_sha256": "71b927fb8268025b06206f178414c92f57283a19a0d52830a53e5da58cb9ef2c",
+  "tolerance_bp": 1.0,
+  "tolerance_unit": "basis_points"
+}

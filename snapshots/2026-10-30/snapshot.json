@@ -1,0 +1,215 @@
+{
+  "metadata": {
+    "created_utc": "2026-11-01T02:57:06+00:00",
+    "schema_version": 1,
+    "snapshot_date": "2026-10-30"
+  },
+  "observations": {
+    "backtest": {
+      "dates": [],
+      "reason": "FRED_API_KEY absent, joint history unavailable",
+      "rule": "2s10s_z252_meanrev_v1",
+      "slopes_bp": [],
+      "status": "missing",
+      "total_pnl_bp": 0.0
+    },
+    "benchmarks": {
+      "10Y": {
+        "valet": {
+          "quality": "observed",
+          "source_id": "valet:BD.CDN.10YR.DQ.YLD",
+          "unit": "percent",
+          "value": 3.84
+        },
+        "valet_label": "Benchmark bond yield, 10-year"
+      },
+      "2Y": {
+        "valet": {
+          "quality": "observed",
+          "source_id": "valet:BD.CDN.2YR.DQ.YLD",
+          "unit": "percent",
+          "value": 3.36
+        },
+        "valet_label": "Benchmark bond yield, 2-year"
+      },
+      "30Y": {
+        "valet": {
+          "quality": "observed",
+          "source_id": "valet:BD.CDN.LONG.DQ.YLD",
+          "unit": "percent",
+          "value": 4.13
+        },
+        "valet_label": "Benchmark bond yield, long-term"
+      },
+      "5Y": {
+        "valet": {
+          "quality": "observed",
+          "source_id": "valet:BD.CDN.5YR.DQ.YLD",
+          "unit": "percent",
+          "value": 3.58
+        },
+        "valet_label": "Benchmark bond yield, 5-year"
+      }
+    },
+    "carry": {
+      "carry_roll_bp": 96.0,
+      "horizon_years": 0.25,
+      "yield_at_maturity_percent": 3.84,
+      "yield_at_rolled_tenor_percent": 3.84
+    },
+    "corra": {
+      "date_role": "value_date_lags_pub_date",
+      "pub_date": "2026-10-30",
+      "value_date": "2026-10-29"
+    },
+    "cross_source_diff_bp": {
+      "unit": "basis_points",
+      "value_bp": 0.0
+    },
+    "curve": {
+      "curve_source_id": "derived:curve",
+      "discounts": {
+        "10Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "unitless_ratio",
+          "value": 0.6836151836256273
+        },
+        "2Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "unitless_ratio",
+          "value": 0.9355302823403125
+        },
+        "30Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "unitless_ratio",
+          "value": 0.2933523730242061
+        },
+        "5Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "unitless_ratio",
+          "value": 0.8374306583073935
+        }
+      },
+      "is_par_approx": true,
+      "is_zero": false,
+      "knots": [
+        {
+          "discount": 0.9355302823403125,
+          "discount_unit": "unitless_ratio",
+          "source_id": "derived:curve",
+          "tenor": "2Y",
+          "tenor_unit": "duration_years",
+          "tenor_years": 2.0,
+          "yield_percent": 3.36,
+          "yield_unit": "percent_yield"
+        },
+        {
+          "discount": 0.8374306583073935,
+          "discount_unit": "unitless_ratio",
+          "source_id": "derived:curve",
+          "tenor": "5Y",
+          "tenor_unit": "duration_years",
+          "tenor_years": 5.0,
+          "yield_percent": 3.58,
+          "yield_unit": "percent_yield"
+        },
+        {
+          "discount": 0.6836151836256273,
+          "discount_unit": "unitless_ratio",
+          "source_id": "derived:curve",
+          "tenor": "10Y",
+          "tenor_unit": "duration_years",
+          "tenor_years": 10.0,
+          "yield_percent": 3.84,
+          "yield_unit": "percent_yield"
+        },
+        {
+          "discount": 0.2933523730242061,
+          "discount_unit": "unitless_ratio",
+          "source_id": "derived:curve",
+          "tenor": "30Y",
+          "tenor_unit": "duration_years",
+          "tenor_years": 30.0,
+          "yield_percent": 4.13,
+          "yield_unit": "percent_yield"
+        }
+      ],
+      "long_proxy_note": "30Y tenor used directly",
+      "method": "par_approx_semiannual_log_discount_v1",
+      "zero_yields": {
+        "10Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "percent_yield",
+          "value": 3.840000000000021
+        },
+        "2Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "percent_yield",
+          "value": 3.359999999999985
+        },
+        "30Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "percent_yield",
+          "value": 4.130000000000011
+        },
+        "5Y": {
+          "quality": "observed",
+          "source_id": "derived:curve",
+          "unit": "percent_yield",
+          "value": 3.5800000000000054
+        }
+      }
+    },
+    "fred_lag": {
+      "expected_lag_note": "DGS prints land T+1, degraded: FRED_API_KEY absent",
+      "observation_date": "2026-10-30"
+    },
+    "risk": {
+      "dv01_per_million": 454.10430640392826,
+      "modified_duration_years": 4.541043064039283,
+      "price": 99.99999999999999,
+      "tenor_years": 5.0,
+      "yield_percent": 3.58
+    },
+    "spreads": {
+      "reason": "FRED_API_KEY absent, US leg unavailable",
+      "records": [],
+      "status": "missing"
+    },
+    "staleness": {
+      "max_age_business_days": 1,
+      "unit": "business_days"
+    },
+    "statcan": {
+      "seasonally_adjusted_reused_as_is": true,
+      "vectors": {}
+    },
+    "tbill_check": {
+      "days_to_maturity": 90,
+      "price": 99.023331524688,
+      "yield_percent": 4.0
+    }
+  },
+  "provenance": {
+    "fred": {
+      "retrieved_utc": "2026-11-01T02:57:06+00:00",
+      "source_url": "https://api.stlouisfed.org/fred/series/observations",
+      "vintage": "2026-10-30"
+    },
+    "valet": {
+      "retrieved_utc": "2026-11-01T02:57:06+00:00",
+      "source_url": "https://www.bankofcanada.ca/valet/observations/group/bond_yields_benchmark/json",
+      "vintage": "2026-10-29"
+    }
+  },
+  "warnings": [
+    "FRED degraded: API key absent, spreads and backtest marked missing"
+  ]
+}
