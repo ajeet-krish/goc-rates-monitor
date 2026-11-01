@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "created_utc": "2026-11-01T02:57:06+00:00",
+    "created_utc": "2026-11-01T04:16:12+00:00",
     "schema_version": 1,
     "snapshot_date": "2026-10-30"
   },
@@ -199,17 +199,25 @@
   },
   "provenance": {
     "fred": {
-      "retrieved_utc": "2026-11-01T02:57:06+00:00",
+      "retrieved_utc": "2026-11-01T04:16:12+00:00",
       "source_url": "https://api.stlouisfed.org/fred/series/observations",
       "vintage": "2026-10-30"
     },
+    "statcan_cpi": {
+      "reason": "CPI bulk agreement failed: basket aggregate for 'C01' 1.8700 disagrees with registry 2.4000 beyond 0.0300 pp",
+      "retrieved_utc": "2026-11-01T04:16:12+00:00",
+      "source_url": "https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/18100004/en",
+      "status": "missing",
+      "vintage": "2025-05"
+    },
     "valet": {
-      "retrieved_utc": "2026-11-01T02:57:06+00:00",
+      "retrieved_utc": "2026-11-01T04:16:12+00:00",
       "source_url": "https://www.bankofcanada.ca/valet/observations/group/bond_yields_benchmark/json",
       "vintage": "2026-10-29"
     }
   },
   "warnings": [
-    "FRED degraded: API key absent, spreads and backtest marked missing"
+    "FRED degraded: API key absent, spreads and backtest marked missing",
+    "CPI degraded, inflation omitted: basket aggregate for 'C01' 1.8700 disagrees with registry 2.4000 beyond 0.0300 pp"
   ]
 }

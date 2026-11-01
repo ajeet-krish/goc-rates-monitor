@@ -1,5 +1,5 @@
 {
-  "checked_utc": "2026-11-01T02:59:47+00:00",
+  "checked_utc": "2026-11-01T04:16:12+00:00",
   "checks": [
     {
       "detail": "canonical JSON round trip succeeded",
@@ -90,12 +90,32 @@
       "detail": "backtest missing, FRED degraded without key (unit: bp)",
       "id": "V18",
       "passed": true
+    },
+    {
+      "detail": "V19 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V19",
+      "passed": true
+    },
+    {
+      "detail": "V20 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V20",
+      "passed": true
+    },
+    {
+      "detail": "V21 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V21",
+      "passed": true
+    },
+    {
+      "detail": "V22 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V22",
+      "passed": true
     }
   ],
   "failed_count": 0,
   "passed": true,
-  "passed_count": 18,
-  "snapshot_sha256": "71b927fb8268025b06206f178414c92f57283a19a0d52830a53e5da58cb9ef2c",
+  "passed_count": 22,
+  "snapshot_sha256": "eae33396810d089e83f8372643df485a30786929e70bdd1d7270ffe308a6d761",
   "tolerance_bp": 1.0,
   "tolerance_unit": "basis_points"
 }
