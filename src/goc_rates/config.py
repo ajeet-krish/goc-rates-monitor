@@ -2,15 +2,29 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-EXPECTED_SCHEMA_VERSION = 1
+from goc_rates.dates import parse_strict_iso_date
+from goc_rates.limits import MAX_YIELD, MIN_YIELD
+
+EXPECTED_SCHEMA_VERSION = 2
+EXPECTED_BENCHMARK_TENORS: tuple[str, ...] = ("2Y", "5Y", "10Y", "30Y")
 
 SERIES_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+@dataclass(frozen=True)
+class BenchmarkIssue:
+    """One benchmark issue with maturity, coupon, and frequency."""
+
+    maturity_date: dt.date
+    coupon_percent: float
+    payments_per_year: int = 2
 
 
 @dataclass(frozen=True)
@@ -23,6 +37,7 @@ class BenchmarkEntry:
     fred_series_id: str
     comparator_label: str
     legacy_v_code: str | None
+    issue: BenchmarkIssue
 
 
 @dataclass(frozen=True)
@@ -32,6 +47,51 @@ class BenchmarkMap:
     schema_version: int
     benchmarks: dict[str, BenchmarkEntry]
     statcan_indicators: list[str]
+
+
+def _load_benchmark_issue(tenor: str, raw: object) -> BenchmarkIssue:
+    """Validate one benchmark issue mapping, failing closed on drift."""
+    if not isinstance(raw, dict):
+        raise ValueError(f"benchmark issue for {tenor!r} must be a mapping")
+    maturity_raw = raw.get("maturity_date")
+    if isinstance(maturity_raw, dt.datetime):
+        raise ValueError(f"benchmark issue for {tenor!r} needs a maturity_date string")
+    if isinstance(maturity_raw, dt.date):
+        maturity = maturity_raw
+    elif isinstance(maturity_raw, str):
+        try:
+            maturity = parse_strict_iso_date(maturity_raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"benchmark issue for {tenor!r} has an invalid maturity_date: {exc}"
+            ) from None
+    else:
+        raise ValueError(f"benchmark issue for {tenor!r} needs a maturity_date string")
+    coupon_raw = raw.get("coupon_percent")
+    if isinstance(coupon_raw, bool) or not isinstance(coupon_raw, (int, float)):
+        raise ValueError(f"benchmark issue for {tenor!r} needs a numeric coupon_percent")
+    coupon = float(coupon_raw)
+    if coupon != coupon or coupon in (float("inf"), float("-inf")):
+        raise ValueError(f"benchmark issue for {tenor!r} coupon_percent must be finite")
+    if coupon < MIN_YIELD or coupon > MAX_YIELD:
+        raise ValueError(
+            f"benchmark issue for {tenor!r} coupon_percent "
+            f"{coupon!r} is outside yield limits "
+            f"[{MIN_YIELD}, {MAX_YIELD}] (unit: percent)"
+        )
+    frequency_raw = raw.get("payments_per_year")
+    if isinstance(frequency_raw, bool) or not isinstance(frequency_raw, int):
+        raise ValueError(f"benchmark issue for {tenor!r} needs an integer payments_per_year")
+    if frequency_raw != 2:
+        raise ValueError(
+            f"benchmark issue for {tenor!r} must be semiannual "
+            f"(payments_per_year 2), got {frequency_raw!r}"
+        )
+    return BenchmarkIssue(
+        maturity_date=maturity,
+        coupon_percent=coupon,
+        payments_per_year=frequency_raw,
+    )
 
 
 def load_benchmark_map(path: str | Path) -> BenchmarkMap:
@@ -65,6 +125,7 @@ def load_benchmark_map(path: str | Path) -> BenchmarkMap:
         legacy = item.get("legacy_v_code")
         if legacy is not None and not isinstance(legacy, str):
             raise ValueError(f"legacy_v_code for {tenor!r} must be a string or null")
+        issue = _load_benchmark_issue(str(tenor), item.get("issue"))
         benchmarks[str(tenor)] = BenchmarkEntry(
             tenor=str(tenor),
             valet_series_id=item["valet_series_id"].strip(),
@@ -72,6 +133,12 @@ def load_benchmark_map(path: str | Path) -> BenchmarkMap:
             fred_series_id=item["fred_series_id"].strip(),
             comparator_label=item["comparator_label"].strip(),
             legacy_v_code=legacy.strip() if isinstance(legacy, str) and legacy.strip() else None,
+            issue=issue,
+        )
+    if set(benchmarks.keys()) != set(EXPECTED_BENCHMARK_TENORS):
+        raise ValueError(
+            f"benchmark tenor set must be {sorted(EXPECTED_BENCHMARK_TENORS)}, "
+            f"got {sorted(benchmarks.keys())}"
         )
     raw_indicators = raw.get("statcan_indicators", [])
     if not isinstance(raw_indicators, list):

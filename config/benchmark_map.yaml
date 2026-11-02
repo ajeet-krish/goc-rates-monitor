@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 benchmarks:
   2Y:
     valet_series_id: BD.CDN.2YR.DQ.YLD
@@ -6,22 +6,38 @@ benchmarks:
     fred_series_id: DGS2
     comparator_label: 2-year US Treasury par yield
     legacy_v_code: null
+    issue:
+      maturity_date: 2028-11-01
+      coupon_percent: 3.0
+      payments_per_year: 2
   5Y:
     valet_series_id: BD.CDN.5YR.DQ.YLD
     valet_label: Benchmark bond yield, 5-year
     fred_series_id: DGS5
     comparator_label: 5-year US Treasury par yield
     legacy_v_code: null
+    issue:
+      maturity_date: 2031-09-01
+      coupon_percent: 3.0
+      payments_per_year: 2
   10Y:
     valet_series_id: BD.CDN.10YR.DQ.YLD
     valet_label: Benchmark bond yield, 10-year
     fred_series_id: DGS10
     comparator_label: 10-year US Treasury par yield
     legacy_v_code: null
+    issue:
+      maturity_date: 2036-06-01
+      coupon_percent: 3.25
+      payments_per_year: 2
   30Y:
     valet_series_id: BD.CDN.LONG.DQ.YLD
     valet_label: Benchmark bond yield, long-term
     fred_series_id: DGS30
     comparator_label: 30-year US Treasury par yield
     legacy_v_code: null
+    issue:
+      maturity_date: 2057-12-01
+      coupon_percent: 3.5
+      payments_per_year: 2
 statcan_indicators: []
