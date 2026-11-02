@@ -1,4 +1,4 @@
-"""Command line interface: snapshot and verify subcommands."""
+"""Command line interface: snapshot, verify, and backfill subcommands."""
 
 from __future__ import annotations
 
@@ -29,6 +29,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Operator trusted path for the verify.json report.",
     )
     ver.add_argument("--config", default=None, help="Benchmark map path for label checks.")
+    back = sub.add_parser("backfill", help="Build a sealed history backfill.")
+    back.add_argument("--asof", default=None, help="Backfill asof date YYYY-MM-DD.")
+    back.add_argument(
+        "--out",
+        default=None,
+        help="Operator trusted output path for backfill.json.",
+    )
+    back.add_argument("--config", default="config/benchmark_map.yaml", help="Benchmark map path.")
     return parser
 
 
@@ -88,12 +96,25 @@ def run_snapshot(
     return run_live_snapshot(date_text, out_dir, config_path)
 
 
+def run_backfill(
+    asof_text: str | None,
+    out_path: str | None,
+    config_path: str | None = "config/benchmark_map.yaml",
+) -> int:
+    """Fetch histories and write the sealed backfill artifact, failing closed."""
+    from goc_rates.backfill import run_backfill as run_backfill_impl
+
+    return run_backfill_impl(asof_text, out_path, config_path)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI and return the exit code."""
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "snapshot":
         return run_snapshot(args.date, args.out, args.config)
+    if args.command == "backfill":
+        return run_backfill(args.asof, args.out, args.config)
     if args.command == "verify":
         try:
             return verify_file(args.snapshot, args.out, benchmark_map_path=args.config)

@@ -217,6 +217,53 @@ def test_extract_bad_value_fails() -> None:
         extract_component_months(payload, {"101"})
 
 
+def test_extract_skips_metadata_member() -> None:
+    """A metadata companion never shadows the real data member."""
+    payload = _zip_bytes(
+        {
+            "18100004_MetaData.csv": b"Cube Title,Product Id\nCPI,18100004\n",
+            "18100004.csv": CSV_TEXT.encode("utf-8"),
+        }
+    )
+    result = extract_component_months(payload, {"101", "102"})
+    assert [month for month, _ in result["101"]] == ["2026-07", "2026-08", "2026-09"]
+    assert result["102"][-1] == ("2026-09", pytest.approx(199.8))
+
+
+def test_extract_accepts_base_year_index_units() -> None:
+    """Base year notation such as 2002=100 counts as an index level."""
+    text = (
+        "REF_DATE,UOM,VECTOR,VALUE\n"
+        "2026-07,2002=100,101,100.0\n"
+        "2026-08,202404=100,101,100.2\n"
+        "2026-09,Index,101,100.5\n"
+    )
+    payload = _zip_bytes({"18100004.csv": text.encode("utf-8")})
+    result = extract_component_months(payload, {"101"})
+    assert [month for month, _ in result["101"]] == ["2026-07", "2026-08", "2026-09"]
+
+
+def test_extract_skips_unwanted_percent_rows() -> None:
+    """Percent rows for other vectors never trip the index unit gate."""
+    text = (
+        "REF_DATE,UOM,VECTOR,VALUE\n"
+        "2026-07,Percent,999,1.5\n"
+        "2026-07,2002=100,101,100.0\n"
+        "2026-08,2002=100,101,100.2\n"
+    )
+    payload = _zip_bytes({"18100004.csv": text.encode("utf-8")})
+    result = extract_component_months(payload, {"101"})
+    assert [month for month, _ in result["101"]] == ["2026-07", "2026-08"]
+
+
+def test_extract_wanted_percent_unit_fails() -> None:
+    """A percent unit on a wanted vector still fails closed."""
+    text = "REF_DATE,UOM,VECTOR,VALUE\n2026-07,Percent,101,1.5\n"
+    payload = _zip_bytes({"18100004.csv": text.encode("utf-8")})
+    with pytest.raises(ValueError, match="is not an index level"):
+        extract_component_months(payload, {"101"})
+
+
 def test_no_files_written_to_disk(tmp_path: object) -> None:
     """Bulk assembly and extraction leave the working tree untouched."""
     from pathlib import Path

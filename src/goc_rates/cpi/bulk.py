@@ -39,6 +39,7 @@ _BASKET_VECTOR_PATTERN = re.compile(r"^[0-9]{8}(?:[0-9]{2})?$")
 _BASKET_YEAR_PATTERN = re.compile(r"^(\d{4})(?:-\d{2}(?:-\d{2})?)?$")
 _MONTH_PATTERN = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])(?:-(\d{2}))?$")
 _BASKET_COORDINATE_PATTERN = re.compile(r"^[0-9]+(\.[0-9]+)*$")
+_INDEX_BASE_PATTERN = re.compile(r"^\d{4,6}=100$")
 _MISSING_TOKENS = frozenset({"", ".", "..", "...", "na", "null"})
 _MAX_CSV_ROWS = 2_000_000
 _MEMBER_HASH_CHUNK_BYTES = 65536
@@ -235,14 +236,23 @@ def _normalize_vector(text: str) -> str:
 def _pick_data_member(
     infos: list[zipfile.ZipInfo],
 ) -> zipfile.ZipInfo:
-    """Pick the data CSV member: a name containing data wins, else the largest CSV."""
+    """Pick the data CSV member: a name containing data wins, else the largest CSV.
+
+    Metadata companions (for example 18100004_MetaData.csv) contain the
+    substring data but hold cube documentation without REF_DATE columns, so
+    they are excluded from candidacy unless the zip holds nothing else. The
+    live StatCan zips pair a large product CSV with a small metadata CSV,
+    and picking the metadata file would shadow the real data member.
+    """
     csv_infos = [info for info in infos if info.filename.lower().endswith(".csv")]
     if not csv_infos:
         raise ValueError("bulk zip holds no CSV member")
-    data_infos = [info for info in csv_infos if "data" in info.filename.lower()]
+    content_infos = [info for info in csv_infos if "meta" not in info.filename.lower()]
+    pool = content_infos if content_infos else csv_infos
+    data_infos = [info for info in pool if "data" in info.filename.lower()]
     if data_infos:
         return sorted(data_infos, key=lambda info: info.file_size, reverse=True)[0]
-    return sorted(csv_infos, key=lambda info: info.file_size, reverse=True)[0]
+    return sorted(pool, key=lambda info: info.file_size, reverse=True)[0]
 
 
 def _pick_basket_member(
@@ -281,15 +291,22 @@ def _assert_index_unit_metadata(
     """Assert bulk unit metadata marks the row as an index level when present.
 
     The registry pins index levels (not precomputed YoY), so when the bulk
-    member carries a UOM or UNIT column the value must name an index. A
-    missing unit column is tolerated for older shapes; a present but
-    non index unit fails closed before any derive step consumes the value.
+    member carries a UOM or UNIT column the value must name an index. Base
+    year notation such as 2002=100 or 202404=100 counts as an index level,
+    since StatCan expresses index bases that way. A missing unit column is
+    tolerated for older shapes; a present but non index unit fails closed
+    before any derive step consumes the value.
     """
     for candidate in ("UOM", "UOM_EN", "UNIT", "UOM_FR"):
         if candidate in header_map:
             actual = header_map[candidate]
             unit_text = str(row.get(actual, "")).strip().lower()
-            if unit_text and "index" not in unit_text and unit_text not in ("number", "index"):
+            if (
+                unit_text
+                and "index" not in unit_text
+                and unit_text not in ("number", "index")
+                and not _INDEX_BASE_PATTERN.match(unit_text)
+            ):
                 raise ValueError(
                     f"bulk CSV row {row_number} unit {unit_text!r} "
                     "is not an index level: published pins are index, not YoY"
@@ -352,10 +369,10 @@ def extract_component_months(
                     raise ValueError(f"bulk data member exceeds the {_MAX_CSV_ROWS} row cap")
                 if not isinstance(row, dict):
                     raise ValueError(f"bulk CSV row {row_number} must be a mapping")
-                _assert_index_unit_metadata(header_map, row, row_number)
                 vector = _normalize_vector(str(row.get(vector_key, "")))
                 if vector not in collected:
                     continue
+                _assert_index_unit_metadata(header_map, row, row_number)
                 month = _normalize_month(str(row.get(ref_key, "")), row_number)
                 raw_value = str(row.get(value_key, "")).strip()
                 if raw_value.lower() in _MISSING_TOKENS:
