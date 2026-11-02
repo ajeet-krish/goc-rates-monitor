@@ -1,7 +1,9 @@
+import { Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
 import type { SnapshotDoc } from "../lib/types";
+import { missingZeroTenors, zeroCurvePoints } from "../lib/curve-points";
 import { fmtNum, fmtYieldPct } from "../lib/format";
 
 interface Props {
@@ -11,32 +13,64 @@ interface Props {
 }
 
 export default function CurvePage(props: Props) {
-  const knots = () => props.snapshot?.observations.curve?.knots ?? [];
+  const curve = () => props.snapshot?.observations.curve;
+  const knots = () => curve()?.knots ?? [];
+  const instruments = () => curve()?.instruments ?? [];
+  const anchors = () => curve()?.anchors ?? [];
+  const settlement = () => curve()?.settlement_date ?? null;
+  const sparse = () => instruments().length === 0 || anchors().length === 0 || settlement() === null;
+  const zeroPoints = () => zeroCurvePoints(knots(), curve()?.zero_yields ?? {});
+  const missingZeros = () => missingZeroTenors(knots(), curve()?.zero_yields ?? {});
+  const anchorDate = (row: { date?: string; payment_date?: string }) =>
+    row.payment_date ?? row.date ?? "date missing";
   return (
     <section aria-label="Curve">
-      <p class="hero-kicker">Curve: par approximation, stated limits</p>
-      <h2 class="hero-headline">Knots, discounts, zero yields.</h2>
+      <p class="hero-kicker">Curve: true zero curve, bootstrapped</p>
+      <h2 class="hero-headline">Solved zeros, not quoted yields.</h2>
       <p class="hero-dek">
-        Benchmark YTM inputs treated as par. Discount proxy D equals 1 over (1 plus
-        y over 2) to the 2T. Log discounts interpolate linearly. Ends hold the
-        nearest yield flat. Verify reprices knots within 1.0 bp (V13).
+        The zero curve is distinct from input YTM. Benchmark yields to maturity
+        price each bond to a dirty target per 100 face, then bisection solves
+        each discount anchor in maturity order within 1.0 bp (V13, V24, V25).
+        Knots use residual ACT over 365 years from settlement. Log discounts
+        interpolate linearly between anchors, with a flat zero tail past the
+        last anchor.
       </p>
       <SectionState
         loading={props.loading}
         error={props.error}
         empty={!props.loading && !props.error && knots().length === 0}
       >
+        <p class="figure-caption">
+          Settlement {settlement() ?? "settlement missing"}. Method{" "}
+          {curve()?.method ?? "unknown"} (is_zero {String(curve()?.is_zero ?? "unknown")},
+          is_par_approx {String(curve()?.is_par_approx ?? "unknown")}). Zero yields
+          are solved semiannual zeros, never requoted inputs.
+        </p>
+        <Show when={sparse()}>
+          <p class="figure-caption" role="status">
+            Degraded: sparse instrument disclosure. Knots render while the
+            instrument or anchor register is absent, so repricing stays
+            unverified on this page until the pipeline republishes settlement,
+            instruments, and anchors.
+          </p>
+        </Show>
         <div class="chart-card">
-          <h2>Yield curve, yield in percent_yield</h2>
+          <h2>Zero curve, yield in percent_yield</h2>
+          <Show when={missingZeros().length > 0}>
+            <p class="figure-caption" role="status">
+              Unavailable: solved zero missing for {missingZeros().join(", ")} in
+              percent_yield, plotted as a gap and never filled from input YTM.
+            </p>
+          </Show>
           <Chart
-            title="Curve yields"
+            title="Zero curve"
             xLabel="Tenor (years)"
             yLabel="Yield (percent_yield)"
             series={[
               {
-                label: "Par approx yield",
+                label: "Zero yield",
                 color: "#2e7f79",
-                points: knots().map((k) => ({ x: k.tenor_years, y: k.yield_percent })),
+                points: zeroPoints(),
               },
             ]}
           />
@@ -57,23 +91,62 @@ export default function CurvePage(props: Props) {
           />
         </div>
         <DataTable
-          caption="Curve knots with yields in percent_yield and discounts as unitless ratios"
+          caption="Curve knots with residual years in duration_years, input YTM in percent_yield, and discounts as unitless ratios"
           columns={[
             { key: "tenor", header: "Tenor" },
             { key: "years", header: "Years", unit: "duration_years" },
-            { key: "yield", header: "Yield", unit: "percent_yield" },
+            { key: "yield", header: "Input YTM", unit: "percent_yield" },
+            { key: "zero", header: "Zero", unit: "percent_yield" },
             { key: "discount", header: "Discount", unit: "unitless_ratio" },
           ]}
-          rows={knots().map((k) => ({
-            tenor: k.tenor,
-            years: fmtNum(k.tenor_years, 1),
-            yield: fmtYieldPct(k.yield_percent),
-            discount: fmtNum(k.discount, 6),
-          }))}
+          rows={knots().map((k) => {
+            const zero = curve()?.zero_yields[k.tenor]?.value;
+            return {
+              tenor: k.tenor,
+              years: fmtNum(k.tenor_years, 2),
+              yield: fmtYieldPct(k.yield_percent),
+              zero: typeof zero === "number" ? fmtYieldPct(zero) : "NA",
+              discount: fmtNum(k.discount, 6),
+            };
+          })}
         />
+        <Show when={!sparse()}>
+          <DataTable
+            caption="Sparse instrument disclosure: tenor, maturity, coupon, cashflows, dirty price, reprice error"
+            columns={[
+              { key: "tenor", header: "Tenor" },
+              { key: "maturity", header: "Maturity" },
+              { key: "coupon", header: "Coupon", unit: "percent" },
+              { key: "flows", header: "Cashflows", unit: "count" },
+              { key: "price", header: "Dirty price", unit: "price_units_per_100_face" },
+              { key: "reprice", header: "Reprice error", unit: "bp" },
+            ]}
+            rows={instruments().map((row) => ({
+              tenor: row.tenor,
+              maturity: row.maturity_date,
+              coupon: fmtNum(row.coupon_percent, 2),
+              flows: String(row.cashflow_count),
+              price: fmtNum(row.dirty_price.value, 2),
+              reprice: fmtNum(row.reprice_error_bp.value, 2),
+            }))}
+          />
+          <DataTable
+            caption="Solved discount anchors with years in duration_years and discounts as unitless ratios"
+            columns={[
+              { key: "date", header: "Anchor date" },
+              { key: "years", header: "Years", unit: "duration_years" },
+              { key: "discount", header: "Discount", unit: "unitless_ratio" },
+            ]}
+            rows={anchors().map((row) => ({
+              date: anchorDate(row),
+              years: fmtNum(row.years_from_settlement, 2),
+              discount: fmtNum(row.discount, 6),
+            }))}
+          />
+        </Show>
         <p class="figure-caption">
-          {props.snapshot?.observations.curve?.long_proxy_note ?? "Long end note missing."}{" "}
-          Method {props.snapshot?.observations.curve?.method ?? "unknown"}.
+          {curve()?.long_proxy_note ?? "Long end note missing."} Method{" "}
+          {curve()?.method ?? "unknown"}.
         </p>
       </SectionState>
     </section>

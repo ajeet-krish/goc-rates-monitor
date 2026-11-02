@@ -175,10 +175,18 @@ def build_live_observations(
     """Build observations, provenance, and warnings from fetched histories."""
     from goc_rates.analytics import canada_us_spread_bp, carry_roll_bp, inner_join_dates, slope_bp
     from goc_rates.backtest import run_backtest
+    from goc_rates.bootstrap import (
+        Instrument,
+        bootstrap_curve,
+        build_bootstrap_curve_section,
+        price_from_curve,
+        zero_yield_percent,
+    )
+    from goc_rates.bootstrap import discount_factor as bootstrap_discount_factor
     from goc_rates.breaks import BENCH_CDN_URL, build_breaks_section
-    from goc_rates.curve import build_curve_section
+    from goc_rates.cashflows import generate_cashflows
     from goc_rates.models import make_missing, make_quantity
-    from goc_rates.risk import dv01_per_million, modified_duration, par_bond_price
+    from goc_rates.risk import dv01_per_million
 
     if switch_feed is None:
         raise ValueError("switch feed is required, refusing a silent pass without breaks")
@@ -231,7 +239,7 @@ def build_live_observations(
             observed_yields[tenor] = quantity
         benchmarks[tenor] = {"valet_label": entry.valet_label, "valet": quantity}
 
-    curve_section = build_curve_section(observed_yields)
+    curve_section = build_bootstrap_curve_section(observed_yields, benchmark_map, target_date)
 
     corra_value_date = previous_business_day(snapshot_date, "ca").isoformat()
     corra_section = {
@@ -367,30 +375,77 @@ def build_live_observations(
             "records": [],
         }
 
-    by_tenor_yield = {
-        str(row["tenor"]): float(str(row["yield_percent"]))
-        for row in curve_section["knots"]
-        if isinstance(row, dict)
+    knot_tenor_years: dict[str, float] = {}
+    for row in curve_section.get("knots", []):
+        if not isinstance(row, dict):
+            raise ValueError("bootstrap knot rows must be mappings")
+        label = row.get("tenor")
+        years_raw = row.get("tenor_years")
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError("bootstrap knot tenor must be a non empty string")
+        if isinstance(years_raw, bool) or not isinstance(years_raw, (int, float)):
+            raise ValueError("bootstrap knot tenor_years must be numeric")
+        knot_tenor_years[label.strip()] = float(years_raw)
+    if "10Y" not in knot_tenor_years or "5Y" not in knot_tenor_years:
+        raise ValueError("bootstrapped curve is missing the 5Y or 10Y knot")
+    tenor_10y = knot_tenor_years["10Y"]
+    tenor_5y = knot_tenor_years["5Y"]
+
+    analytic_instruments: list[Instrument] = []
+    for label in TENORS:
+        quantity = observed_yields.get(label)
+        if not isinstance(quantity, dict):
+            raise ValueError(f"observed yield for {label} is missing")
+        raw_value = quantity.get("value")
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+            raise ValueError(f"observed yield for {label} must be numeric")
+        analytic_instruments.append(
+            Instrument(
+                tenor_label=label,
+                issue=benchmark_map.benchmarks[label].issue,
+                yield_percent=float(raw_value),
+            )
+        )
+    bootstrapped = bootstrap_curve(target_date, analytic_instruments)
+
+    zero_long = zero_yield_percent(bootstrapped, tenor_10y)
+    zero_rolled = zero_yield_percent(bootstrapped, tenor_10y - 0.25)
+    observations["carry"] = {
+        "yield_at_maturity_percent": zero_long,
+        "yield_at_rolled_tenor_percent": zero_rolled,
+        "horizon_years": 0.25,
+        "carry_roll_bp": carry_roll_bp(zero_long, zero_rolled, 0.25),
     }
-    long_yield = by_tenor_yield.get("10Y")
-    five_yield = by_tenor_yield.get("5Y")
-    if long_yield is not None:
-        observations["carry"] = {
-            "yield_at_maturity_percent": long_yield,
-            "yield_at_rolled_tenor_percent": long_yield,
-            "horizon_years": 0.25,
-            "carry_roll_bp": carry_roll_bp(long_yield, long_yield, 0.25),
-        }
-    if five_yield is not None:
-        price = par_bond_price(five_yield, 5.0)
-        duration = modified_duration(five_yield, 5.0)
-        observations["risk"] = {
-            "yield_percent": five_yield,
-            "tenor_years": 5.0,
-            "price": price,
-            "modified_duration_years": duration,
-            "dv01_per_million": dv01_per_million(price, duration),
-        }
+
+    five_entry = observed_yields.get("5Y")
+    assert isinstance(five_entry, dict)
+    five_raw = five_entry.get("value")
+    assert isinstance(five_raw, (int, float)) and not isinstance(five_raw, bool)
+    five_par = float(five_raw)
+    issue_5y = benchmark_map.benchmarks["5Y"].issue
+    flows_5y = generate_cashflows(target_date, issue_5y)
+    price_5y = price_from_curve(bootstrapped, target_date, issue_5y)
+    present_values: list[float] = []
+    for flow in flows_5y:
+        present_values.append(
+            flow.amount_per_100_face
+            * bootstrap_discount_factor(bootstrapped, flow.years_from_settlement)
+        )
+    macaulay_5y = (
+        sum(
+            flow.years_from_settlement * present
+            for flow, present in zip(flows_5y, present_values, strict=True)
+        )
+        / price_5y
+    )
+    modified_5y = macaulay_5y / (1.0 + five_par / 200.0)
+    observations["risk"] = {
+        "yield_percent": five_par,
+        "tenor_years": tenor_5y,
+        "price": price_5y,
+        "modified_duration_years": modified_5y,
+        "dv01_per_million": dv01_per_million(price_5y, modified_5y),
+    }
 
     if fred_available:
         ca_two = ca_histories["2Y"]

@@ -115,6 +115,20 @@ export default function InflationPage(props: Props) {
             </p>
           </div>
           <div class="ledger-card" style={{ margin: "16px 0" }}>
+            <h2>Curve context</h2>
+            <p>
+              The funding curve beside this replica is a solved zero curve,
+              distinct from input YTM. Inputs price the bonds, zeros come from
+              the solved discounts.
+            </p>
+            <p class="figure-caption">
+              Sparse instrument disclosure lists cashflows, dirty prices, and
+              reprice errors on the curve page. Degraded curve registers
+              withhold repricing until settlement and anchors return. Method{" "}
+              {props.snapshot?.observations.curve?.method ?? "method unknown"}.
+            </p>
+          </div>
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Weight vintage and bulk hashes</h2>
             <p class="num">
               expenditure {vintage()?.expenditure_year}, link month{" "}

@@ -27,7 +27,7 @@ def _switch_feed() -> Any:
 
 
 def _histories(days: int = 260) -> tuple[dict[str, list[Any]], dict[str, list[Any]], str]:
-    base = dt.date(2025, 1, 6)
+    base = dt.date(2026, 2, 20)
     dates = [(base + dt.timedelta(days=i)).isoformat() for i in range(days)]
     valet_map = {
         "BD.CDN.2YR.DQ.YLD": 3.0,
@@ -77,8 +77,9 @@ def _write_and_verify(
     assert code == 0
     report = json.loads((directory / "verify.json").read_text(encoding="utf-8"))
     assert report["passed"] is True
-    assert report["passed_count"] == 23
+    assert report["passed_count"] == 25
     assert report["failed_count"] == 0
+    assert report["checks"][-1]["id"] == "V25"
     return report
 
 
@@ -87,8 +88,8 @@ def _attach_inflation(observations: dict[str, Any], provenance: dict[str, Any]) 
     attach_demo_inflation(observations, provenance)
 
 
-def test_live_full_pass_v01_to_v22(tmp_path: Path) -> None:
-    """Mocked Valet plus FRED histories yield a snapshot that passes V01-V23."""
+def test_live_full_pass_v01_to_v25(tmp_path: Path) -> None:
+    """Mocked Valet plus FRED histories yield a snapshot that passes V01-V25."""
     benchmark_map = load_benchmark_map(CONFIG)
     valet_by_series, fred_by_series, last = _histories()
     snapshot_date = dt.date.fromisoformat(last)
@@ -107,10 +108,12 @@ def test_live_full_pass_v01_to_v22(tmp_path: Path) -> None:
     assert by_id["V16"]["passed"] is True
     assert by_id["V18"]["passed"] is True
     assert by_id["V22"]["passed"] is True
+    assert by_id["V24"]["passed"] is True
+    assert by_id["V25"]["passed"] is True
     assert "mock" not in json.dumps(observations).lower()
 
 
-def test_live_degraded_fred_passes_v01_to_v22(tmp_path: Path) -> None:
+def test_live_degraded_fred_passes_v01_to_v25(tmp_path: Path) -> None:
     """A missing FRED key marks spreads and backtest missing but still passes."""
     benchmark_map = load_benchmark_map(CONFIG)
     valet_by_series, _, last = _histories()
@@ -132,9 +135,11 @@ def test_live_degraded_fred_passes_v01_to_v22(tmp_path: Path) -> None:
     assert "degraded" in by_id["V16"]["detail"].lower()
     assert by_id["V18"]["passed"] is True
     assert "degraded" in by_id["V18"]["detail"].lower()
+    assert by_id["V24"]["passed"] is True
+    assert by_id["V25"]["passed"] is True
 
 
-def test_live_degraded_cpi_passes_v01_to_v22(tmp_path: Path) -> None:
+def test_live_degraded_cpi_passes_v01_to_v25(tmp_path: Path) -> None:
     """A CPI bulk disagreement omits inflation but still passes V19 to V22."""
     from goc_rates.live_snapshot import _degraded_cpi_provenance
 
@@ -166,7 +171,17 @@ def test_live_degraded_cpi_passes_v01_to_v22(tmp_path: Path) -> None:
         )
     assert by_id["V13"]["passed"] is True
     assert by_id["V23"]["passed"] is True
-    assert report["passed_count"] == 23
+    assert by_id["V24"]["passed"] is True
+    assert by_id["V25"]["passed"] is True
+    assert report["passed_count"] == 25
+    curve = observations["curve"]
+    assert isinstance(curve, dict)
+    assert curve["method"] == "true_bootstrap_semiannual_log_discount_v1"
+    assert curve["is_par_approx"] is False
+    assert curve["is_zero"] is True
+    assert "settlement_date" in curve
+    assert "instruments" in curve
+    assert "anchors" in curve
 
 
 def test_resolve_target_date_strict_and_previous_joint() -> None:

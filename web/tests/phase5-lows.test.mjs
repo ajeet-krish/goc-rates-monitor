@@ -104,24 +104,25 @@ describe("phase5 lows: tenor drift, vintage, coupon units, provenance", () => {
   });
 });
 
-describe("phase5 lows: methods pins 23 checks tolerance footer banner", () => {
-  it("pins 23 expected checks ending at V23", () => {
-    assert.equal(EXPECTED_VERIFY_IDS.length, 23);
+describe("phase5 lows: methods pins 25 checks tolerance footer banner", () => {
+  it("pins 25 expected checks ending at V25", () => {
+    assert.equal(EXPECTED_VERIFY_IDS.length, 25);
     assert.equal(EXPECTED_VERIFY_IDS[0], "V01");
-    assert.equal(EXPECTED_VERIFY_IDS[22], "V23");
+    assert.equal(EXPECTED_VERIFY_IDS[24], "V25");
   });
 
-  it("rejects a verify report with 22 checks", () => {
+  it("rejects a verify report with 24 checks", () => {
     const report = structuredClone(mockVerify);
-    report.checks = report.checks.slice(0, 22);
-    report.passed_count = 22;
+    report.checks = report.checks.slice(0, 24);
+    report.passed_count = 24;
     report.failed_count = 0;
-    assert.throws(() => validateVerify(report), /exactly 23/);
+    assert.throws(() => validateVerify(report), /exactly 25/);
   });
 
-  it("covers V23 in the fourth check family with 1.0 bp tolerance", () => {
-    assert.equal(CHECK_FAMILIES.length, 4);
+  it("covers V23 in the fourth check family and V24 to V25 in the fifth with 1.0 bp tolerance", () => {
+    assert.equal(CHECK_FAMILIES.length, 5);
     assert.equal(CHECK_FAMILIES[3].range, "V23");
+    assert.equal(CHECK_FAMILIES[4].range, "V24 to V25");
     const report = structuredClone(mockVerify);
     assert.equal(report.tolerance_bp, 1.0);
     assert.equal(report.tolerance_unit, "basis_points");

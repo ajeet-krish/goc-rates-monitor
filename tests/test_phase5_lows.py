@@ -41,25 +41,66 @@ def _feed_with(event: SwitchEvent) -> SwitchFeed:
 
 
 def _passing_snapshot_with_breaks() -> dict[str, Any]:
+    from goc_rates.analytics import carry_roll_bp
     from goc_rates.backtest import BACKTEST_RULE, run_backtest
-    from goc_rates.curve import build_curve_section
+    from goc_rates.bootstrap import (
+        Instrument,
+        bootstrap_curve,
+        build_bootstrap_curve_section,
+        price_from_curve,
+        zero_yield_percent,
+    )
+    from goc_rates.bootstrap import discount_factor as bootstrap_discount_factor
+    from goc_rates.cashflows import generate_cashflows
+    from goc_rates.config import load_benchmark_map
     from goc_rates.models import make_quantity
-    from goc_rates.risk import dv01_per_million, modified_duration, par_bond_price
+    from goc_rates.risk import dv01_per_million
     from goc_rates.verify import tbill_price_from_yield
     from tests.cpi_fixtures import attach_demo_inflation
 
     price = tbill_price_from_yield(4.0, 90)
-    curve = build_curve_section(
-        {
-            "2Y": make_quantity(3.32, "percent", "observed", "valet:BD.CDN.2YR.DQ.YLD"),
-            "5Y": make_quantity(3.62, "percent", "observed", "valet:BD.CDN.5YR.DQ.YLD"),
-            "10Y": make_quantity(3.9, "percent", "observed", "valet:BD.CDN.10YR.DQ.YLD"),
-            "30Y": make_quantity(4.19, "percent", "observed", "valet:BD.CDN.LONG.DQ.YLD"),
-        }
+    benchmark_map = load_benchmark_map(CONFIG.parent / "benchmark_map.yaml")
+    settlement = dt.date(2026, 10, 30)
+    observed_yields = {
+        "2Y": make_quantity(3.32, "percent", "observed", "valet:BD.CDN.2YR.DQ.YLD"),
+        "5Y": make_quantity(3.62, "percent", "observed", "valet:BD.CDN.5YR.DQ.YLD"),
+        "10Y": make_quantity(3.9, "percent", "observed", "valet:BD.CDN.10YR.DQ.YLD"),
+        "30Y": make_quantity(4.19, "percent", "observed", "valet:BD.CDN.LONG.DQ.YLD"),
+    }
+    curve = build_bootstrap_curve_section(observed_yields, benchmark_map, settlement)
+    knot_tenors = {row["tenor"]: float(row["tenor_years"]) for row in curve["knots"]}
+    analytic_instruments = [
+        Instrument(
+            tenor_label=label,
+            issue=benchmark_map.benchmarks[label].issue,
+            yield_percent=float(observed_yields[label]["value"]),
+        )
+        for label in ("2Y", "5Y", "10Y", "30Y")
+    ]
+    bootstrapped = bootstrap_curve(settlement, analytic_instruments)
+    tenor_10y = knot_tenors["10Y"]
+    tenor_5y = knot_tenors["5Y"]
+    zero_long = zero_yield_percent(bootstrapped, tenor_10y)
+    zero_rolled = zero_yield_percent(bootstrapped, tenor_10y - 0.25)
+    carry_roll = carry_roll_bp(zero_long, zero_rolled, 0.25)
+    five_par = float(observed_yields["5Y"]["value"])
+    issue_5y = benchmark_map.benchmarks["5Y"].issue
+    flows_5y = generate_cashflows(settlement, issue_5y)
+    price_5y = price_from_curve(bootstrapped, settlement, issue_5y)
+    present_values = [
+        flow.amount_per_100_face
+        * bootstrap_discount_factor(bootstrapped, flow.years_from_settlement)
+        for flow in flows_5y
+    ]
+    macaulay_5y = (
+        sum(
+            flow.years_from_settlement * present
+            for flow, present in zip(flows_5y, present_values, strict=True)
+        )
+        / price_5y
     )
-    risk_price = par_bond_price(3.0, 5.0)
-    risk_duration = modified_duration(3.0, 5.0)
-    risk_dv01 = dv01_per_million(risk_price, risk_duration)
+    modified_5y = macaulay_5y / (1.0 + five_par / 200.0)
+    risk_dv01 = dv01_per_million(price_5y, modified_5y)
     base = dt.date(2025, 1, 6)
     dates = [(base + dt.timedelta(days=i)).isoformat() for i in range(260)]
     slopes = [100.0 + float(i % 5) for i in range(260)]
@@ -77,15 +118,42 @@ def _passing_snapshot_with_breaks() -> dict[str, Any]:
         "observations": {
             "tbill_check": {"yield_percent": 4.0, "price": price, "days_to_maturity": 90},
             "benchmarks": {
-                "10Y": {
-                    "valet_label": "10-year benchmark bond yield",
+                "2Y": {
+                    "valet_label": "Benchmark bond yield, 2-year",
                     "valet": {
-                        "value": 3.85,
+                        "value": 3.32,
+                        "unit": "percent",
+                        "quality": "observed",
+                        "source_id": "valet:BD.CDN.2YR.DQ.YLD",
+                    },
+                },
+                "5Y": {
+                    "valet_label": "Benchmark bond yield, 5-year",
+                    "valet": {
+                        "value": 3.62,
+                        "unit": "percent",
+                        "quality": "observed",
+                        "source_id": "valet:BD.CDN.5YR.DQ.YLD",
+                    },
+                },
+                "10Y": {
+                    "valet_label": "Benchmark bond yield, 10-year",
+                    "valet": {
+                        "value": 3.9,
                         "unit": "percent",
                         "quality": "observed",
                         "source_id": "valet:BD.CDN.10YR.DQ.YLD",
                     },
-                }
+                },
+                "30Y": {
+                    "valet_label": "Benchmark bond yield, long-term",
+                    "valet": {
+                        "value": 4.19,
+                        "unit": "percent",
+                        "quality": "observed",
+                        "source_id": "valet:BD.CDN.LONG.DQ.YLD",
+                    },
+                },
             },
             "corra": {
                 "value_date": "2026-10-29",
@@ -143,16 +211,16 @@ def _passing_snapshot_with_breaks() -> dict[str, Any]:
                 ],
             },
             "carry": {
-                "yield_at_maturity_percent": 3.0,
-                "yield_at_rolled_tenor_percent": 3.0,
+                "yield_at_maturity_percent": zero_long,
+                "yield_at_rolled_tenor_percent": zero_rolled,
                 "horizon_years": 0.25,
-                "carry_roll_bp": 75.0,
+                "carry_roll_bp": carry_roll,
             },
             "risk": {
-                "yield_percent": 3.0,
-                "tenor_years": 5.0,
-                "price": risk_price,
-                "modified_duration_years": risk_duration,
+                "yield_percent": five_par,
+                "tenor_years": tenor_5y,
+                "price": price_5y,
+                "modified_duration_years": modified_5y,
                 "dv01_per_million": risk_dv01,
             },
             "backtest": {
@@ -210,8 +278,7 @@ def test_build_breaks_history_over_cap_rejects() -> None:
     big = {f"2020-01-{(i % 28) + 1:02d}": 3.0 for i in range(10)}
     assert len(big) <= 10
     oversized = {
-        f"{2000 + (i // 12):04d}-{(i % 12) + 1:02d}-15": 3.0
-        for i in range(MAX_HISTORY_OBS + 1)
+        f"{2000 + (i // 12):04d}-{(i % 12) + 1:02d}-15": 3.0 for i in range(MAX_HISTORY_OBS + 1)
     }
     histories = {
         "2Y": oversized,
@@ -333,10 +400,32 @@ def test_v23_provenance_sha_mismatch_fails() -> None:
     assert "sha256" in result["detail"]
 
 
-def test_verify_reports_23_checks_at_1bp() -> None:
+def test_verify_reports_25_checks_at_1bp() -> None:
     snapshot = _passing_snapshot_with_breaks()
     report = verify_snapshot(snapshot)
-    assert len(report["checks"]) == 23
-    assert report["checks"][-1]["id"] == "V23"
+    assert len(report["checks"]) == 25
+    assert report["checks"][-1]["id"] == "V25"
+    assert report["checks"][-2]["id"] == "V24"
     assert TOLERANCE_BP == 1.0
     assert report["passed"] is True
+
+
+def test_bootstrap_curve_shape_true_method() -> None:
+    """The fixture curve uses true bootstrap with settlement and anchors."""
+    from goc_rates.bootstrap import BOOTSTRAP_METHOD
+
+    snapshot = _passing_snapshot_with_breaks()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    curve = observations["curve"]
+    assert isinstance(curve, dict)
+    assert curve["method"] == BOOTSTRAP_METHOD
+    assert curve["is_par_approx"] is False
+    assert curve["is_zero"] is True
+    assert "settlement_date" in curve
+    assert len(curve["instruments"]) == 4
+    assert len(curve["anchors"]) == 4
+    report = verify_snapshot(snapshot)
+    by_id = {item["id"]: item for item in report["checks"]}
+    assert by_id["V24"]["passed"] is True
+    assert by_id["V25"]["passed"] is True

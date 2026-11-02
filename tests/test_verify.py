@@ -1,14 +1,24 @@
-"""Verification tests: V01 to V23 checks with a 1.0 basis point tolerance."""
+"""Verification tests: V01 to V25 checks with a 1.0 basis point tolerance."""
 
 import datetime as dt
 import json
 from pathlib import Path
 from typing import Any
 
+from goc_rates.analytics import carry_roll_bp
 from goc_rates.backtest import BACKTEST_RULE, run_backtest
-from goc_rates.curve import build_curve_section
+from goc_rates.bootstrap import (
+    Instrument,
+    bootstrap_curve,
+    build_bootstrap_curve_section,
+    price_from_curve,
+    zero_yield_percent,
+)
+from goc_rates.bootstrap import discount_factor as bootstrap_discount_factor
+from goc_rates.cashflows import generate_cashflows
+from goc_rates.config import load_benchmark_map
 from goc_rates.models import make_quantity
-from goc_rates.risk import dv01_per_million, modified_duration, par_bond_price
+from goc_rates.risk import dv01_per_million
 from goc_rates.verify import (
     TOLERANCE_BP,
     tbill_price_from_yield,
@@ -20,17 +30,50 @@ from tests.cpi_fixtures import attach_demo_inflation
 
 def _passing_snapshot() -> dict[str, Any]:
     price = tbill_price_from_yield(4.0, 90)
-    curve = build_curve_section(
-        {
-            "2Y": make_quantity(3.32, "percent", "observed", "valet:BD.CDN.2YR.DQ.YLD"),
-            "5Y": make_quantity(3.62, "percent", "observed", "valet:BD.CDN.5YR.DQ.YLD"),
-            "10Y": make_quantity(3.9, "percent", "observed", "valet:BD.CDN.10YR.DQ.YLD"),
-            "30Y": make_quantity(4.19, "percent", "observed", "valet:BD.CDN.LONG.DQ.YLD"),
-        }
+    benchmark_map = load_benchmark_map(
+        Path(__file__).resolve().parent.parent / "config" / "benchmark_map.yaml"
     )
-    risk_price = par_bond_price(3.0, 5.0)
-    risk_duration = modified_duration(3.0, 5.0)
-    risk_dv01 = dv01_per_million(risk_price, risk_duration)
+    settlement = dt.date(2026, 10, 30)
+    observed_yields = {
+        "2Y": make_quantity(3.32, "percent", "observed", "valet:BD.CDN.2YR.DQ.YLD"),
+        "5Y": make_quantity(3.62, "percent", "observed", "valet:BD.CDN.5YR.DQ.YLD"),
+        "10Y": make_quantity(3.9, "percent", "observed", "valet:BD.CDN.10YR.DQ.YLD"),
+        "30Y": make_quantity(4.19, "percent", "observed", "valet:BD.CDN.LONG.DQ.YLD"),
+    }
+    curve = build_bootstrap_curve_section(observed_yields, benchmark_map, settlement)
+    knot_tenors = {row["tenor"]: float(row["tenor_years"]) for row in curve["knots"]}
+    analytic_instruments = [
+        Instrument(
+            tenor_label=label,
+            issue=benchmark_map.benchmarks[label].issue,
+            yield_percent=float(observed_yields[label]["value"]),
+        )
+        for label in ("2Y", "5Y", "10Y", "30Y")
+    ]
+    bootstrapped = bootstrap_curve(settlement, analytic_instruments)
+    tenor_10y = knot_tenors["10Y"]
+    tenor_5y = knot_tenors["5Y"]
+    zero_long = zero_yield_percent(bootstrapped, tenor_10y)
+    zero_rolled = zero_yield_percent(bootstrapped, tenor_10y - 0.25)
+    carry_roll = carry_roll_bp(zero_long, zero_rolled, 0.25)
+    five_par = float(observed_yields["5Y"]["value"])
+    issue_5y = benchmark_map.benchmarks["5Y"].issue
+    flows_5y = generate_cashflows(settlement, issue_5y)
+    price_5y = price_from_curve(bootstrapped, settlement, issue_5y)
+    present_values = [
+        flow.amount_per_100_face
+        * bootstrap_discount_factor(bootstrapped, flow.years_from_settlement)
+        for flow in flows_5y
+    ]
+    macaulay_5y = (
+        sum(
+            flow.years_from_settlement * present
+            for flow, present in zip(flows_5y, present_values, strict=True)
+        )
+        / price_5y
+    )
+    modified_5y = macaulay_5y / (1.0 + five_par / 200.0)
+    risk_dv01 = dv01_per_million(price_5y, modified_5y)
     base = dt.date(2025, 1, 6)
     dates = [(base + dt.timedelta(days=i)).isoformat() for i in range(260)]
     slopes = [100.0 + float(i % 5) for i in range(260)]
@@ -40,15 +83,42 @@ def _passing_snapshot() -> dict[str, Any]:
         "observations": {
             "tbill_check": {"yield_percent": 4.0, "price": price, "days_to_maturity": 90},
             "benchmarks": {
-                "10Y": {
-                    "valet_label": "10-year benchmark bond yield",
+                "2Y": {
+                    "valet_label": "Benchmark bond yield, 2-year",
                     "valet": {
-                        "value": 3.85,
+                        "value": 3.32,
+                        "unit": "percent",
+                        "quality": "observed",
+                        "source_id": "valet:BD.CDN.2YR.DQ.YLD",
+                    },
+                },
+                "5Y": {
+                    "valet_label": "Benchmark bond yield, 5-year",
+                    "valet": {
+                        "value": 3.62,
+                        "unit": "percent",
+                        "quality": "observed",
+                        "source_id": "valet:BD.CDN.5YR.DQ.YLD",
+                    },
+                },
+                "10Y": {
+                    "valet_label": "Benchmark bond yield, 10-year",
+                    "valet": {
+                        "value": 3.9,
                         "unit": "percent",
                         "quality": "observed",
                         "source_id": "valet:BD.CDN.10YR.DQ.YLD",
                     },
-                }
+                },
+                "30Y": {
+                    "valet_label": "Benchmark bond yield, long-term",
+                    "valet": {
+                        "value": 4.19,
+                        "unit": "percent",
+                        "quality": "observed",
+                        "source_id": "valet:BD.CDN.LONG.DQ.YLD",
+                    },
+                },
             },
             "corra": {
                 "value_date": "2026-10-29",
@@ -106,16 +176,16 @@ def _passing_snapshot() -> dict[str, Any]:
                 ],
             },
             "carry": {
-                "yield_at_maturity_percent": 3.0,
-                "yield_at_rolled_tenor_percent": 3.0,
+                "yield_at_maturity_percent": zero_long,
+                "yield_at_rolled_tenor_percent": zero_rolled,
                 "horizon_years": 0.25,
-                "carry_roll_bp": 75.0,
+                "carry_roll_bp": carry_roll,
             },
             "risk": {
-                "yield_percent": 3.0,
-                "tenor_years": 5.0,
-                "price": risk_price,
-                "modified_duration_years": risk_duration,
+                "yield_percent": five_par,
+                "tenor_years": tenor_5y,
+                "price": price_5y,
+                "modified_duration_years": modified_5y,
                 "dv01_per_million": risk_dv01,
             },
             "backtest": {
@@ -176,10 +246,12 @@ def test_tbill_price_inversion_matches_formula() -> None:
 
 
 def test_passing_snapshot_passes_all_checks() -> None:
-    """A complete snapshot passes V01 to V23."""
+    """A complete snapshot passes V01 to V25."""
     report = verify_snapshot(_passing_snapshot())
     assert report["passed"] is True
-    assert len(report["checks"]) == 23
+    assert len(report["checks"]) == 25
+    assert report["checks"][-1]["id"] == "V25"
+    assert report["checks"][-2]["id"] == "V24"
     assert report["failed_count"] == 0
     assert report["tolerance_unit"] == "basis_points"
 
@@ -199,7 +271,7 @@ def test_failing_snapshot_reports_failures() -> None:
 
 
 def test_v13_fails_on_reprice_drift() -> None:
-    """A curve knot edited after pricing fails V13."""
+    """A curve discount edited after solving fails V13."""
     snapshot = _passing_snapshot()
     observations = snapshot["observations"]
     assert isinstance(observations, dict)
@@ -209,10 +281,31 @@ def test_v13_fails_on_reprice_drift() -> None:
     assert isinstance(knots, list)
     first = knots[0]
     assert isinstance(first, dict)
-    first["yield_percent"] = float(first["yield_percent"]) + 0.05
+    first["discount"] = float(first["discount"]) + 0.01
     report = verify_snapshot(snapshot)
     failed_ids = [item["id"] for item in report["checks"] if not item["passed"]]
     assert "V13" in failed_ids
+
+
+def test_bootstrap_curve_uses_true_method() -> None:
+    """The passing fixture uses the true bootstrap contract."""
+    from goc_rates.bootstrap import BOOTSTRAP_METHOD
+
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    curve = observations["curve"]
+    assert isinstance(curve, dict)
+    assert curve["method"] == BOOTSTRAP_METHOD
+    assert curve["is_par_approx"] is False
+    assert curve["is_zero"] is True
+    assert "settlement_date" in curve
+    assert len(curve["instruments"]) == 4
+    assert len(curve["anchors"]) == 4
+    report = verify_snapshot(snapshot)
+    by_id = {item["id"]: item for item in report["checks"]}
+    assert by_id["V24"]["passed"] is True
+    assert by_id["V25"]["passed"] is True
 
 
 def test_v18_fails_on_short_backtest() -> None:
@@ -230,6 +323,63 @@ def test_v18_fails_on_short_backtest() -> None:
     report = verify_snapshot(snapshot)
     failed_ids = [item["id"] for item in report["checks"] if not item["passed"]]
     assert "V18" in failed_ids
+
+
+def test_tampered_knot_yield_fails_v13_v24_v25() -> None:
+    """A tampered knot yield breaks three way agreement in V13, V24, and V25."""
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    curve = observations["curve"]
+    assert isinstance(curve, dict)
+    knots = curve["knots"]
+    assert isinstance(knots, list)
+    first = knots[0]
+    assert isinstance(first, dict)
+    first["yield_percent"] = float(first["yield_percent"]) + 0.05
+    report = verify_snapshot(snapshot)
+    by_id = {item["id"]: item for item in report["checks"]}
+    assert by_id["V13"]["passed"] is False
+    assert by_id["V24"]["passed"] is False
+    assert by_id["V25"]["passed"] is False
+
+
+def test_tampered_observed_valet_yield_fails_agreement() -> None:
+    """A tampered observed Valet print breaks yield agreement in V13, V24, V25."""
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    benchmarks = observations["benchmarks"]
+    assert isinstance(benchmarks, dict)
+    entry_2y = benchmarks["2Y"]
+    assert isinstance(entry_2y, dict)
+    valet = entry_2y["valet"]
+    assert isinstance(valet, dict)
+    valet["value"] = float(valet["value"]) + 0.05
+    report = verify_snapshot(snapshot)
+    by_id = {item["id"]: item for item in report["checks"]}
+    assert by_id["V13"]["passed"] is False
+    assert by_id["V24"]["passed"] is False
+    assert by_id["V25"]["passed"] is False
+
+
+def test_v24_excludes_switch_events_after_settlement() -> None:
+    """A switch event dated after settlement is excluded and fails V24."""
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    breaks = observations["breaks"]
+    assert isinstance(breaks, dict)
+    events = breaks["events"]
+    assert isinstance(events, list)
+    for event in events:
+        assert isinstance(event, dict)
+        if event.get("tenor") in ("2Y", "30Y", "LONG"):
+            event["effective_date"] = "2026-11-15"
+            event["effective_joint_date"] = "2026-11-16"
+    report = verify_snapshot(snapshot)
+    by_id = {item["id"]: item for item in report["checks"]}
+    assert by_id["V24"]["passed"] is False
 
 
 def test_verify_file_writes_verify_json_with_exit_code(tmp_path: Path) -> None:

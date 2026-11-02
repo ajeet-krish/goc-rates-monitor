@@ -3,6 +3,7 @@ import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
 import type { SnapshotDoc } from "../lib/types";
+import { missingZeroTenors, zeroCurvePoints } from "../lib/curve-points";
 import { fmtBp, fmtYieldPct } from "../lib/format";
 
 interface Props {
@@ -13,6 +14,9 @@ interface Props {
 
 export default function IndexPage(props: Props) {
   const knots = () => props.snapshot?.observations.curve?.knots ?? [];
+  const zeroYields = () => props.snapshot?.observations.curve?.zero_yields ?? {};
+  const zeroPoints = () => zeroCurvePoints(knots(), zeroYields());
+  const missingZeros = () => missingZeroTenors(knots(), zeroYields());
   const twoY = () => knots().find((k) => k.tenor === "2Y")?.yield_percent ?? null;
   const tenY = () => knots().find((k) => k.tenor === "10Y")?.yield_percent ?? null;
   // Spreads envelope: the desk reads the stored 10Y record. Null when
@@ -39,8 +43,10 @@ export default function IndexPage(props: Props) {
           <p class="hero-kicker">Internal research desk: read the curve first</p>
           <h2 class="hero-headline">The live curve is the thesis.</h2>
           <p class="hero-dek">
-            Government of Canada benchmark yields to maturity, treated as a par
-            approximation with log discount interpolation. Flat ends, 30Y proxy at
+            Government of Canada benchmark yields to maturity price each bond to
+            a dirty target, then bisection solves the zero curve on semiannual
+            cashflows. The zero curve is distinct from input YTM: quotes enter,
+            solved zeros leave. Flat zero tail past the last anchor, 30Y proxy at
             the long end. Everything else on this desk is commentary on this line.
           </p>
           <SectionState
@@ -49,17 +55,22 @@ export default function IndexPage(props: Props) {
             empty={!props.loading && !props.error && knots().length === 0}
           >
             <DataTable
-              caption="Latest benchmark knot yields in percent yield and discounts as unitless ratios"
+              caption="Latest benchmark knot yields in percent yield with solved zeros and discounts as unitless ratios"
               columns={[
                 { key: "tenor", header: "Tenor" },
-                { key: "yield", header: "Yield", unit: "percent_yield" },
+                { key: "yield", header: "Input YTM", unit: "percent_yield" },
+                { key: "zero", header: "Zero", unit: "percent_yield" },
                 { key: "discount", header: "Discount", unit: "unitless_ratio" },
               ]}
-              rows={knots().map((k) => ({
-                tenor: k.tenor,
-                yield: fmtYieldPct(k.yield_percent),
-                discount: Number(k.discount).toFixed(6),
-              }))}
+              rows={knots().map((k) => {
+                const zero = props.snapshot?.observations.curve?.zero_yields[k.tenor]?.value;
+                return {
+                  tenor: k.tenor,
+                  yield: fmtYieldPct(k.yield_percent),
+                  zero: typeof zero === "number" ? fmtYieldPct(zero) : "NA",
+                  discount: Number(k.discount).toFixed(6),
+                };
+              })}
             />
           </SectionState>
         </div>
@@ -110,7 +121,11 @@ export default function IndexPage(props: Props) {
               </tbody>
             </table>
             <p class="figure-caption">
-              Method par_approx_semiannual_log_discount_v1. Long end is a 30Y proxy.
+              Method true_bootstrap_semiannual_log_discount_v1. Solved zero curve
+              (is_zero true, is_par_approx false), distinct from input YTM. Long
+              end is a 30Y proxy. Sparse instrument disclosure lists cashflows,
+              dirty prices, and reprice errors on the curve page. Degraded curve
+              registers withhold repricing until settlement and anchors return.
               The 2s10s slope is the stored backtest slope, never recomputed here.
               NA until the pipeline publishes a slope series.
             </p>
@@ -119,16 +134,22 @@ export default function IndexPage(props: Props) {
       </div>
       <Show when={!props.loading && !props.error && knots().length > 0}>
         <div class="chart-card" style={{ margin: "16px 0" }}>
-          <h2>Curve shape, yield in percent</h2>
+          <h2>Curve shape, zero in percent</h2>
+          <Show when={missingZeros().length > 0}>
+            <p class="figure-caption" role="status">
+              Unavailable: solved zero missing for {missingZeros().join(", ")} in
+              percent_yield, plotted as a gap and never filled from input YTM.
+            </p>
+          </Show>
           <Chart
-            title="Par approx curve"
+            title="Bootstrapped zero curve"
             xLabel="Tenor (years)"
             yLabel="Yield (percent_yield)"
             series={[
               {
-                label: "Yield",
+                label: "Zero",
                 color: "#2e7f79",
-                points: knots().map((k) => ({ x: k.tenor_years, y: k.yield_percent })),
+                points: zeroPoints(),
               },
             ]}
           />

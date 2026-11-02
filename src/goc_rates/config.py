@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 from goc_rates.dates import parse_strict_iso_date
-from goc_rates.limits import MAX_YIELD, MIN_YIELD
+from goc_rates.limits import MAX_YIELD
 
 EXPECTED_SCHEMA_VERSION = 2
 EXPECTED_BENCHMARK_TENORS: tuple[str, ...] = ("2Y", "5Y", "10Y", "30Y")
@@ -73,11 +73,11 @@ def _load_benchmark_issue(tenor: str, raw: object) -> BenchmarkIssue:
     coupon = float(coupon_raw)
     if coupon != coupon or coupon in (float("inf"), float("-inf")):
         raise ValueError(f"benchmark issue for {tenor!r} coupon_percent must be finite")
-    if coupon < MIN_YIELD or coupon > MAX_YIELD:
+    if coupon < 0.0 or coupon > MAX_YIELD:
         raise ValueError(
             f"benchmark issue for {tenor!r} coupon_percent "
-            f"{coupon!r} is outside yield limits "
-            f"[{MIN_YIELD}, {MAX_YIELD}] (unit: percent)"
+            f"{coupon!r} is outside the supported range "
+            f"[0.0, {MAX_YIELD}] (unit: percent)"
         )
     frequency_raw = raw.get("payments_per_year")
     if isinstance(frequency_raw, bool) or not isinstance(frequency_raw, int):

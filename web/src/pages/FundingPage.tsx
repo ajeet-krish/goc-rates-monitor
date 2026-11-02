@@ -55,7 +55,9 @@ export default function FundingPage(props: Props) {
       <h2 class="hero-headline">What it costs to hold the trade.</h2>
       <p class="hero-dek">
         CORRA value dates lag publication by one business day. CA-US spreads join
-        on common business days with no forward fill. Carry is horizon 0.25 years,
+        on common business days with no forward fill. The zero curve is distinct
+        from input YTM: carry and risk read solved semiannual zeros from the
+        bootstrapped curve, never requoted yields. Carry is horizon 0.25 years,
         ex coupon and ex funding, on an unchanged curve. DV01 is closed form
         semiannual per million.
       </p>
@@ -124,6 +126,19 @@ export default function FundingPage(props: Props) {
           <p class="figure-caption" role="status">
             Spreads unavailable: {spreadsReason()}.
             CA-US spread by tenor, carry chart, and table are withheld until the US leg returns.
+            Degraded spreads stay explicit with a reason, never a silent gap.
+          </p>
+        </Show>
+        <Show
+          when={
+            (props.snapshot?.observations.curve?.instruments ?? []).length === 0 ||
+            !props.snapshot?.observations.curve?.settlement_date
+          }
+        >
+          <p class="figure-caption" role="status">
+            Degraded: sparse instrument disclosure on the curve register. Carry
+            and risk still read the stored zero section, but per bond repricing
+            is unverified until settlement, instruments, and anchors republish.
           </p>
         </Show>
         <Show when={spreadsAvailable()}>

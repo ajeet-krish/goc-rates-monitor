@@ -1,4 +1,4 @@
-"""Verification checks V01 to V23 with a 1.0 basis point tolerance."""
+"""Verification checks V01 to V25 with a 1.0 basis point tolerance."""
 
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def run_checks(
     expected_labels: dict[str, str] | None = None,
     fred_api_key: str | None = None,
 ) -> list[CheckResult]:
-    """Run checks V01 to V23 against a snapshot document."""
+    """Run checks V01 to V25 against a snapshot document."""
     results: list[CheckResult] = []
     metadata = snapshot.get("metadata")
     observations = snapshot.get("observations")
@@ -388,6 +388,7 @@ def run_checks(
     results.extend(_run_phase2_checks(snapshot, tolerance_bp, fred_api_key))
     results.extend(_run_phase4_checks(snapshot))
     results.extend(_run_phase5_checks(snapshot, tolerance_bp))
+    results.extend(_run_phase6_checks(snapshot, tolerance_bp))
 
     return results
 
@@ -458,6 +459,488 @@ def _backtest_section(snapshot: dict[str, Any]) -> Any:
     return _get_path(snapshot, "observations", "backtest")
 
 
+def _backtest_section(snapshot: dict[str, Any]) -> Any:
+    """Return the backtest section dict or None."""
+    return _get_path(snapshot, "observations", "backtest")
+
+
+def _curve_method(curve_section: Any) -> str | None:
+    """Return the curve method string when present, else None."""
+    if not isinstance(curve_section, dict):
+        return None
+    method = curve_section.get("method")
+    return method if isinstance(method, str) and method.strip() else None
+
+
+def _is_bootstrap_method(curve_section: Any) -> bool:
+    """Return True when the curve section uses the true bootstrap method."""
+    from goc_rates.bootstrap import BOOTSTRAP_METHOD
+
+    return isinstance(curve_section, dict) and curve_section.get("method") == BOOTSTRAP_METHOD
+
+
+def _bootstrap_settlement(curve_section: dict[str, Any]) -> dt.date:
+    """Parse the bootstrap settlement date, failing closed."""
+    settlement = _parse_date(curve_section.get("settlement_date"))
+    if settlement is None:
+        raise ValueError("curve settlement_date is missing or unparseable")
+    return settlement
+
+
+def _bootstrap_knot_rows(curve_section: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return validated bootstrap knot rows in stored order."""
+    from goc_rates.limits import MAX_QUANTITIES
+
+    knots_raw = curve_section.get("knots")
+    if not isinstance(knots_raw, list) or not knots_raw:
+        raise ValueError("curve knots are missing")
+    if len(knots_raw) > MAX_QUANTITIES:
+        raise ValueError("knot count exceeds the cap before recompute")
+    rows: list[dict[str, Any]] = []
+    for row in knots_raw:
+        if not isinstance(row, dict):
+            raise ValueError("curve knot rows must be mappings")
+        rows.append(row)
+    labels = [
+        str(row.get("tenor", "")).strip() if isinstance(row.get("tenor"), str) else ""
+        for row in rows
+    ]
+    if labels != ["2Y", "5Y", "10Y", "30Y"]:
+        raise ValueError(f"curve tenor set must be 2Y 5Y 10Y 30Y, got {labels}")
+    return rows
+
+
+def _bootstrap_instruments(curve_section: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return validated bootstrap instrument rows in stored order."""
+    from goc_rates.limits import MAX_BOOTSTRAP_ANCHORS
+
+    rows_raw = curve_section.get("instruments")
+    if not isinstance(rows_raw, list) or not rows_raw:
+        raise ValueError("curve instruments are missing")
+    if len(rows_raw) > MAX_BOOTSTRAP_ANCHORS:
+        raise ValueError("instrument count exceeds the anchor cap before recompute")
+    rows: list[dict[str, Any]] = []
+    for row in rows_raw:
+        if not isinstance(row, dict):
+            raise ValueError("curve instrument rows must be mappings")
+        rows.append(row)
+    labels = [
+        str(row.get("tenor", "")).strip() if isinstance(row.get("tenor"), str) else ""
+        for row in rows
+    ]
+    if labels != ["2Y", "5Y", "10Y", "30Y"]:
+        raise ValueError(f"instrument tenor set must be 2Y 5Y 10Y 30Y, got {labels}")
+    if len(set(labels)) != len(labels):
+        raise ValueError("instrument tenors must be unique")
+    return rows
+
+
+def _bootstrap_anchors(curve_section: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return validated bootstrap anchor rows in stored order."""
+    from goc_rates.limits import MAX_BOOTSTRAP_ANCHORS
+
+    rows_raw = curve_section.get("anchors")
+    if not isinstance(rows_raw, list) or not rows_raw:
+        raise ValueError("curve anchors are missing")
+    if len(rows_raw) > MAX_BOOTSTRAP_ANCHORS:
+        raise ValueError("anchor count exceeds the cap before recompute")
+    rows: list[dict[str, Any]] = []
+    for row in rows_raw:
+        if not isinstance(row, dict):
+            raise ValueError("curve anchor rows must be mappings")
+        rows.append(row)
+    return rows
+
+
+def _observed_benchmark_yields(snapshot: dict[str, Any]) -> dict[str, float]:
+    """Return observed Valet benchmark yields in percent keyed by tenor.
+
+    Reads observations.benchmarks entries for 2Y, 5Y, 10Y, and 30Y,
+    requiring each valet quantity to be observed with a percent or
+    percent_yield unit and a finite value in range (unit: percent).
+    Any missing tenor, non observed quality, or out of range value
+    fails closed so tampered or stale feeds cannot pass silently.
+    """
+    from goc_rates.limits import MAX_YIELD, MIN_YIELD
+
+    observations = snapshot.get("observations")
+    if not isinstance(observations, dict):
+        raise ValueError("observations section is missing for yield agreement")
+    benchmarks = observations.get("benchmarks")
+    if not isinstance(benchmarks, dict):
+        raise ValueError("observations.benchmarks section is missing for yield agreement")
+    yields: dict[str, float] = {}
+    for tenor in ("2Y", "5Y", "10Y", "30Y"):
+        entry = benchmarks.get(tenor)
+        if not isinstance(entry, dict):
+            raise ValueError(f"observed benchmark for {tenor} is missing")
+        valet = entry.get("valet")
+        if not isinstance(valet, dict):
+            raise ValueError(f"observed valet quantity for {tenor} is missing")
+        if valet.get("quality") != "observed":
+            raise ValueError(f"observed valet quality for {tenor} must be observed")
+        if valet.get("unit") not in ("percent", "percent_yield"):
+            raise ValueError(f"observed valet unit for {tenor} must be percent or percent_yield")
+        value = _require_float(valet.get("value", ""), f"observed valet value for {tenor}")
+        if not MIN_YIELD <= value <= MAX_YIELD:
+            raise ValueError(f"observed valet value for {tenor} is out of range")
+        yields[tenor] = value
+    return yields
+
+
+def _check_yield_agreement(
+    label: str,
+    knot_yield: float,
+    instrument_yield: float,
+    observed_yield: float,
+    tolerance_bp: float,
+) -> float:
+    """Return the worst pairwise yield gap in bp across the three legs.
+
+    Knot yields, instrument yields, and observed benchmark values must
+    agree within tolerance per tenor (unit: bp). Any gap above
+    tolerance fails closed downstream.
+    """
+    knot_obs = abs(knot_yield - observed_yield) * 100.0
+    inst_obs = abs(instrument_yield - observed_yield) * 100.0
+    knot_inst = abs(knot_yield - instrument_yield) * 100.0
+    worst = max(knot_obs, inst_obs, knot_inst)
+    if worst > tolerance_bp:
+        raise ValueError(
+            f"yield agreement for {label} exceeds tolerance: knot {knot_yield}, "
+            f"instrument {instrument_yield}, observed {observed_yield} "
+            f"(worst {worst:.4f} bp, unit: bp)"
+        )
+    return worst
+
+
+def _check_v13_bootstrap(
+    snapshot: dict[str, Any], curve_section: dict[str, Any], tolerance_bp: float
+) -> CheckResult:
+    """Check V13 for the true bootstrap method using stored mappings."""
+    from goc_rates.bootstrap import BOOTSTRAP_METHOD
+
+    try:
+        if curve_section.get("method") != BOOTSTRAP_METHOD:
+            raise ValueError(f"curve method must be {BOOTSTRAP_METHOD}")
+        if curve_section.get("is_par_approx") is not False:
+            raise ValueError("curve is_par_approx must be false")
+        if curve_section.get("is_zero") is not True:
+            raise ValueError("curve is_zero must be true")
+        settlement = _bootstrap_settlement(curve_section)
+        _ = settlement
+        knot_rows = _bootstrap_knot_rows(curve_section)
+        stored_discounts = curve_section.get("discounts")
+        stored_zeros = curve_section.get("zero_yields")
+        if not isinstance(stored_discounts, dict) or not isinstance(stored_zeros, dict):
+            raise ValueError("stored discounts and zero_yields mappings are missing")
+        worst = 0.0
+        knot_yields: dict[str, float] = {}
+        for row in knot_rows:
+            label = str(row.get("tenor")).strip()
+            tenor_years = _require_float(row.get("tenor_years", ""), "tenor_years")
+            if str(row.get("tenor_unit", "")).strip() != "duration_years":
+                raise ValueError(f"knot tenor_unit for {label} must be duration_years")
+            knot_yield = _require_float(row.get("yield_percent", ""), "yield_percent")
+            if str(row.get("yield_unit", "")).strip() != "percent_yield":
+                raise ValueError(f"knot yield_unit for {label} must be percent_yield")
+            knot_discount = _require_float(row.get("discount", ""), "discount")
+            if str(row.get("discount_unit", "")).strip() != "unitless_ratio":
+                raise ValueError(f"knot discount_unit for {label} must be unitless_ratio")
+            if not 0.0 < knot_discount <= 1.0:
+                raise ValueError(f"knot discount for {label} must be in (0, 1]")
+            if not tenor_years > 0.0:
+                raise ValueError(f"knot tenor_years for {label} must be positive")
+            knot_yields[label] = knot_yield
+            discount_entry = stored_discounts.get(label)
+            zero_entry = stored_zeros.get(label)
+            if not isinstance(discount_entry, dict) or not isinstance(zero_entry, dict):
+                raise ValueError(f"stored mapping for {label} must be a Quantity")
+            if str(discount_entry.get("unit", "")).strip() != "unitless_ratio":
+                raise ValueError(f"stored discount unit for {label} must be unitless_ratio")
+            if str(zero_entry.get("unit", "")).strip() != "percent_yield":
+                raise ValueError(f"stored zero unit for {label} must be percent_yield")
+            stored_d = _require_float(discount_entry.get("value", ""), "discount value")
+            stored_z = _require_float(zero_entry.get("value", ""), "zero value")
+            if not 0.0 < stored_d <= 1.0:
+                raise ValueError(f"stored discount for {label} must be in (0, 1]")
+            discount_bp = abs(knot_discount - stored_d) / stored_d * 10000.0
+            worst = max(worst, discount_bp)
+            if tenor_years <= 0.0:
+                raise ValueError(f"knot tenor for {label} must be positive")
+            try:
+                inverted = 2.0 * (knot_discount ** (-1.0 / (2.0 * tenor_years)) - 1.0) * 100.0
+            except (OverflowError, ZeroDivisionError):
+                raise ValueError("zero inversion overflowed") from None
+            if inverted != inverted or inverted in (float("inf"), float("-inf")):
+                raise ValueError("inverted zero must be finite")
+            zero_bp = abs(inverted - stored_z) * 100.0
+            worst = max(worst, zero_bp)
+        instruments = curve_section.get("instruments")
+        if not isinstance(instruments, list) or not instruments:
+            raise ValueError("curve instruments are missing for V13")
+        instrument_yields: dict[str, float] = {}
+        for row in instruments:
+            if not isinstance(row, dict):
+                raise ValueError("instrument rows must be mappings, no filtering")
+            instrument_label = str(row.get("tenor")).strip()
+            instrument_yields[instrument_label] = _require_float(
+                row.get("yield_percent", ""), "yield_percent"
+            )
+            error_entry = row.get("reprice_error_bp")
+            if not isinstance(error_entry, dict):
+                raise ValueError("instrument reprice_error_bp must be a mapping")
+            if str(error_entry.get("unit", "")).strip() != "bp":
+                raise ValueError("reprice_error_bp unit must be bp")
+            stored_error = _require_float(error_entry.get("value", ""), "reprice_error")
+            worst = max(worst, abs(stored_error))
+            dirty_entry = row.get("dirty_price")
+            if not isinstance(dirty_entry, dict):
+                raise ValueError("instrument dirty_price must be a mapping")
+            if str(dirty_entry.get("unit", "")).strip() != "price_units_per_100_face":
+                raise ValueError("dirty_price unit must be price_units_per_100_face")
+            _require_float(dirty_entry.get("value", ""), "dirty_price")
+        observed = _observed_benchmark_yields(snapshot)
+        for label in ("2Y", "5Y", "10Y", "30Y"):
+            if label not in knot_yields:
+                raise ValueError(f"knot yield for {label} is missing")
+            if label not in instrument_yields:
+                raise ValueError(f"instrument yield for {label} is missing")
+            worst = max(
+                worst,
+                _check_yield_agreement(
+                    label,
+                    knot_yields[label],
+                    instrument_yields[label],
+                    observed[label],
+                    tolerance_bp,
+                ),
+            )
+        return CheckResult(
+            "V13",
+            worst <= tolerance_bp,
+            f"bootstrap curve stored worst {worst:.4f} bp within {tolerance_bp} bp (unit: bp)",
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        return CheckResult("V13", False, f"bootstrap curve check failed: {exc}")
+
+
+def _check_v14_bootstrap(curve_section: dict[str, Any]) -> CheckResult:
+    """Check V14 for the true bootstrap method over knots and anchors."""
+    try:
+        knot_rows = _bootstrap_knot_rows(curve_section)
+        anchor_rows = _bootstrap_anchors(curve_section)
+        tenors: list[float] = []
+        discounts: list[float] = []
+        for row in knot_rows:
+            tenors.append(_require_float(row.get("tenor_years", ""), "tenor_years"))
+            discounts.append(_require_float(row.get("discount", ""), "discount"))
+        anchor_years: list[float] = []
+        anchor_discounts: list[float] = []
+        for row in anchor_rows:
+            anchor_years.append(_require_float(row.get("years_from_settlement", ""), "years"))
+            anchor_discounts.append(_require_float(row.get("discount", ""), "discount"))
+        in_range = all(0.0 < item <= 1.0 for item in discounts)
+        in_range = in_range and all(0.0 < item <= 1.0 for item in anchor_discounts)
+        increasing = all(second > first for first, second in zip(tenors, tenors[1:], strict=False))
+        increasing = increasing and all(
+            second > first for first, second in zip(anchor_years, anchor_years[1:], strict=False)
+        )
+        decreasing = all(
+            first > second for first, second in zip(discounts, discounts[1:], strict=False)
+        )
+        decreasing = decreasing and all(
+            first > second
+            for first, second in zip(anchor_discounts, anchor_discounts[1:], strict=False)
+        )
+        passed = in_range and increasing and decreasing and len(tenors) >= 3
+        detail = (
+            "bootstrap discounts in (0, 1] and strictly decreasing "
+            "with increasing tenors and anchors (unit: unitless_ratio)"
+        )
+        if not passed:
+            detail = "bootstrap discount monotonicity or range failed (unit: unitless_ratio)"
+        return CheckResult("V14", passed, detail)
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        return CheckResult("V14", False, f"bootstrap discount check failed: {exc}")
+
+
+def _check_v17_bootstrap(snapshot: dict[str, Any], tolerance_bp: float) -> CheckResult:
+    """Check V17 for the true bootstrap method from zero yields and discounts."""
+    from goc_rates.analytics import carry_roll_bp
+    from goc_rates.bootstrap import (
+        BOOTSTRAP_METHOD,
+        BootstrappedCurve,
+        DiscountAnchor,
+        Instrument,
+    )
+    from goc_rates.bootstrap import discount_factor as bootstrap_discount
+    from goc_rates.bootstrap import zero_yield_percent as bootstrap_zero
+    from goc_rates.config import BenchmarkIssue
+    from goc_rates.limits import (
+        MAX_BOOTSTRAP_ANCHORS,
+        MAX_CARRY_HORIZON,
+        MAX_TENOR_YEARS,
+        MAX_YIELD,
+        MIN_YIELD,
+    )
+
+    try:
+        curve_section = _curve_section(snapshot)
+        if not isinstance(curve_section, dict):
+            raise ValueError("curve section is missing")
+        if curve_section.get("method") != BOOTSTRAP_METHOD:
+            raise ValueError(f"curve method must be {BOOTSTRAP_METHOD}")
+        settlement = _bootstrap_settlement(curve_section)
+        knot_rows = _bootstrap_knot_rows(curve_section)
+        instrument_rows = _bootstrap_instruments(curve_section)
+        anchor_rows = _bootstrap_anchors(curve_section)
+        if len(anchor_rows) > MAX_BOOTSTRAP_ANCHORS:
+            raise ValueError("anchor count exceeds the cap before recompute")
+        stored_zeros = curve_section.get("zero_yields")
+        if not isinstance(stored_zeros, dict):
+            raise ValueError("stored zero_yields mapping is missing")
+        knot_years: dict[str, float] = {}
+        for row in knot_rows:
+            label = str(row.get("tenor")).strip()
+            knot_years[label] = _require_float(row.get("tenor_years", ""), "tenor_years")
+        if "10Y" not in knot_years or "5Y" not in knot_years:
+            raise ValueError("bootstrapped curve is missing the 5Y or 10Y knot")
+        tenor_10y = knot_years["10Y"]
+        tenor_5y = knot_years["5Y"]
+        zero_10y_entry = stored_zeros.get("10Y")
+        if not isinstance(zero_10y_entry, dict):
+            raise ValueError("stored zero for 10Y must be a Quantity")
+        stored_zero_10y = _require_float(zero_10y_entry.get("value", ""), "zero 10Y")
+        carry = _carry_section(snapshot)
+        risk = _risk_section(snapshot)
+        if not isinstance(carry, dict) or not isinstance(risk, dict):
+            raise ValueError("carry or risk section is missing")
+        long_yield = _require_float(carry.get("yield_at_maturity_percent", ""), "yield_at_maturity")
+        rolled = _require_float(carry.get("yield_at_rolled_tenor_percent", ""), "yield_at_rolled")
+        horizon = _require_float(carry.get("horizon_years", ""), "horizon_years")
+        stored_carry = _require_float(carry.get("carry_roll_bp", ""), "carry_roll_bp")
+        if not MIN_YIELD <= long_yield <= MAX_YIELD:
+            raise ValueError("carry long yield is outside the supported range")
+        if not MIN_YIELD <= rolled <= MAX_YIELD:
+            raise ValueError("carry rolled yield is outside the supported range")
+        if not 0.0 < horizon <= MAX_CARRY_HORIZON:
+            raise ValueError("carry horizon is outside the bounded range")
+        if abs(long_yield - stored_zero_10y) * 100.0 > tolerance_bp:
+            raise ValueError("carry long yield must match the stored 10Y zero yield")
+        expected_carry = carry_roll_bp(long_yield, rolled, horizon)
+        carry_diff = abs(expected_carry - stored_carry)
+        issues: dict[str, BenchmarkIssue] = {}
+        yields: dict[str, float] = {}
+        for row in instrument_rows:
+            label = str(row.get("tenor")).strip()
+            maturity = _parse_date(row.get("maturity_date"))
+            if maturity is None:
+                raise ValueError(f"instrument maturity for {label} is unparseable")
+            coupon = _require_float(row.get("coupon_percent", ""), "coupon_percent")
+            bond_yield = _require_float(row.get("yield_percent", ""), "yield_percent")
+            if not MIN_YIELD <= coupon <= MAX_YIELD:
+                raise ValueError(f"instrument coupon for {label} is out of range")
+            if not MIN_YIELD <= bond_yield <= MAX_YIELD:
+                raise ValueError(f"instrument yield for {label} is out of range")
+            issues[label] = BenchmarkIssue(
+                maturity_date=maturity,
+                coupon_percent=coupon,
+                payments_per_year=2,
+            )
+            yields[label] = bond_yield
+        if "5Y" not in issues:
+            raise ValueError("5Y instrument is missing for risk recompute")
+        anchors: list[DiscountAnchor] = []
+        for row in anchor_rows:
+            payment = _parse_date(row.get("payment_date"))
+            if payment is None:
+                raise ValueError("anchor payment_date is unparseable")
+            years = _require_float(row.get("years_from_settlement", ""), "years_from_settlement")
+            discount = _require_float(row.get("discount", ""), "discount")
+            if not years > 0.0 or years > MAX_TENOR_YEARS:
+                raise ValueError("anchor years are outside the bounded range")
+            if not 0.0 < discount <= 1.0:
+                raise ValueError("anchor discount must be in (0, 1]")
+            anchors.append(
+                DiscountAnchor(payment_date=payment, years_from_settlement=years, discount=discount)
+            )
+        anchors.sort(key=lambda item: item.years_from_settlement)
+        instruments = tuple(
+            Instrument(
+                tenor_label=label,
+                issue=issues[label],
+                yield_percent=yields[label],
+            )
+            for label in ("2Y", "5Y", "10Y", "30Y")
+        )
+        curve = BootstrappedCurve(
+            settlement=settlement,
+            method=BOOTSTRAP_METHOD,
+            anchors=tuple(anchors),
+            instruments=instruments,
+        )
+        recomputed_long = bootstrap_zero(curve, tenor_10y)
+        recomputed_rolled = bootstrap_zero(curve, tenor_10y - horizon)
+        long_diff_bp = abs(recomputed_long - long_yield) * 100.0
+        rolled_diff_bp = abs(recomputed_rolled - rolled) * 100.0
+        if tenor_5y <= 0.0 or tenor_5y > MAX_TENOR_YEARS:
+            raise ValueError("5Y tenor is outside the bounded range")
+        risk_yield = _require_float(risk.get("yield_percent", ""), "yield_percent")
+        risk_tenor = _require_float(risk.get("tenor_years", ""), "tenor_years")
+        stored_price = _require_float(risk.get("price", ""), "price")
+        stored_duration = _require_float(
+            risk.get("modified_duration_years", ""), "modified_duration"
+        )
+        stored_dv01 = _require_float(risk.get("dv01_per_million", ""), "dv01")
+        if abs(risk_tenor - tenor_5y) > 1e-9:
+            raise ValueError("risk tenor must match the stored 5Y knot tenor")
+        if abs(risk_yield - yields["5Y"]) > 1e-9:
+            raise ValueError("risk yield must match the stored 5Y instrument yield")
+        from goc_rates.cashflows import generate_cashflows
+
+        flows_5y = generate_cashflows(settlement, issues["5Y"])
+        price_model = sum(
+            flow.amount_per_100_face * bootstrap_discount(curve, flow.years_from_settlement)
+            for flow in flows_5y
+        )
+        if not price_model > 0.0:
+            raise ValueError("recomputed risk price must be positive")
+        weighted = sum(
+            flow.years_from_settlement
+            * flow.amount_per_100_face
+            * bootstrap_discount(curve, flow.years_from_settlement)
+            for flow in flows_5y
+        )
+        macaulay = weighted / price_model
+        modified = macaulay / (1.0 + risk_yield / 200.0)
+        from goc_rates.risk import dv01_per_million
+
+        recomputed_dv01 = dv01_per_million(price_model, modified)
+        price_ok = abs(price_model - stored_price) <= 0.01
+        duration_ok = abs(modified - stored_duration) <= 0.0001
+        dv01_ok = abs(recomputed_dv01 - stored_dv01) <= 1.0
+        carry_ok = (
+            carry_diff <= tolerance_bp
+            and long_diff_bp <= tolerance_bp
+            and rolled_diff_bp <= tolerance_bp
+        )
+        passed = price_ok and duration_ok and dv01_ok and carry_ok
+        return CheckResult(
+            "V17",
+            passed,
+            f"bootstrap carry diff {carry_diff:.4f} bp within {tolerance_bp} bp, "
+            f"long zero diff {long_diff_bp:.4f} bp, "
+            f"rolled zero diff {rolled_diff_bp:.4f} bp; "
+            f"price tol 0.01 per 100, duration tol 0.0001 years, "
+            f"DV01 tol 1.0 per million "
+            f"(price {price_model:.4f}, duration {modified:.4f} "
+            f"years, DV01 {recomputed_dv01:.2f} per million; unit: mixed)",
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        return CheckResult("V17", False, f"bootstrap carry risk recompute failed: {exc}")
+
+
 def _is_degraded_missing(section: Any, fred_api_key: str | None) -> bool:
     """Return True when a section is an explicit FRED degraded missing marker.
 
@@ -481,7 +964,13 @@ def _run_phase2_checks(
     tolerance_bp: float,
     fred_api_key: str | None = None,
 ) -> list[CheckResult]:
-    """Run checks V13 to V18 for the Phase 2 curve engine."""
+    """Run checks V13 to V18 for the Phase 2 curve engine.
+
+    V13, V14, and V17 dispatch on curve.method: the legacy par approx
+    method keeps the original recompute, while the true bootstrap method
+    uses the stored zero and discount path. V16 stays unchanged with the
+    exact tenor set already enforced.
+    """
     from goc_rates.analytics import canada_us_spread_bp, carry_roll_bp
     from goc_rates.backtest import BACKTEST_RULE, run_backtest
     from goc_rates.live_snapshot import FRED_DEGRADED_REASON
@@ -492,6 +981,7 @@ def _run_phase2_checks(
 
     curve_section = _curve_section(snapshot)
     curve: Curve | None = None
+    _is_bootstrap_curve = _is_bootstrap_method(curve_section)
     if not isinstance(curve_section, dict):
         results.append(CheckResult("V13", False, "curve section is missing"))
         results.append(CheckResult("V14", False, "curve section is missing"))
@@ -604,6 +1094,12 @@ def _run_phase2_checks(
             results.append(CheckResult("V14", passed, detail))
         except (ValueError, TypeError, ArithmeticError) as exc:
             results.append(CheckResult("V14", False, f"discount check failed: {exc}"))
+        if _is_bootstrap_curve and isinstance(curve_section, dict):
+            # Dispatch: the V13 and V14 results above used the legacy par
+            # approx recompute, so replace them with the bootstrap path.
+            results[-2] = _check_v13_bootstrap(snapshot, curve_section, tolerance_bp)
+            results[-1] = _check_v14_bootstrap(curve_section)
+            curve = None
         try:
             derived = _derived_quantities(snapshot)
             if len(derived) > MAX_QUANTITIES:
@@ -799,6 +1295,11 @@ def _run_phase2_checks(
             )
         except (ValueError, TypeError, ArithmeticError) as exc:
             results.append(CheckResult("V17", False, f"carry risk recompute failed: {exc}"))
+        if _is_bootstrap_curve:
+            # Dispatch: replace the par approx V17 with the bootstrap path
+            # that reads carry from stored zero yields and risk from the
+            # stored 5Y cashflows priced off bootstrapped discounts.
+            results[-1] = _check_v17_bootstrap(snapshot, tolerance_bp)
 
     backtest = _backtest_section(snapshot)
     if not isinstance(backtest, dict):
@@ -1542,6 +2043,358 @@ def _run_phase5_checks(
     except (ValueError, TypeError, ArithmeticError) as exc:
         results.append(CheckResult("V23", False, f"breaks integrity failed: {exc}"))
     return results
+
+
+def _check_v24_instrument_feed(
+    snapshot: dict[str, Any], tolerance_bp: float = TOLERANCE_BP
+) -> CheckResult:
+    """Check V24 for stored instruments, schedules, and feed agreement."""
+    from goc_rates.bootstrap import BOOTSTRAP_METHOD
+    from goc_rates.breaks import normalize_tenor
+    from goc_rates.cashflows import generate_cashflows
+    from goc_rates.config import BenchmarkIssue
+    from goc_rates.limits import (
+        MAX_BOOTSTRAP_ANCHORS,
+        MAX_CASHFLOWS_PER_INSTRUMENT,
+        MAX_TENOR_YEARS,
+        MAX_YIELD,
+        MIN_YIELD,
+    )
+
+    try:
+        curve_section = _curve_section(snapshot)
+        if not isinstance(curve_section, dict):
+            raise ValueError("curve section is missing")
+        if curve_section.get("method") != BOOTSTRAP_METHOD:
+            raise ValueError(f"curve method must be {BOOTSTRAP_METHOD}")
+        settlement = _bootstrap_settlement(curve_section)
+        instrument_rows = _bootstrap_instruments(curve_section)
+        if len(instrument_rows) > MAX_BOOTSTRAP_ANCHORS:
+            raise ValueError("instrument count exceeds the anchor cap before recompute")
+        breaks = _breaks_section(snapshot)
+        if not isinstance(breaks, dict):
+            raise ValueError("breaks section is missing beside a present bootstrap curve")
+        events_raw = breaks.get("events")
+        if not isinstance(events_raw, list) or not events_raw:
+            raise ValueError("breaks events are missing for the feed cross-check")
+        latest_incoming: dict[str, dict[str, Any]] = {}
+        latest_joint: dict[str, dt.date] = {}
+        latest_effective: dict[str, dt.date] = {}
+        for row in events_raw:
+            if not isinstance(row, dict):
+                raise ValueError("breaks event rows must be mappings, no filtering")
+            tenor_raw = row.get("tenor")
+            if not isinstance(tenor_raw, str) or not tenor_raw.strip():
+                raise ValueError("breaks event tenor is missing")
+            tenor = normalize_tenor(tenor_raw.strip())
+            joint = _parse_date(row.get("effective_joint_date"))
+            effective = _parse_date(row.get("effective_date"))
+            if joint is None or effective is None:
+                raise ValueError("breaks event dates are unparseable")
+            if effective > settlement or joint > settlement:
+                continue
+            known_joint = latest_joint.get(tenor)
+            known_effective = latest_effective.get(tenor)
+            if (
+                known_joint is None
+                or known_effective is None
+                or joint > known_joint
+                or (joint == known_joint and effective > known_effective)
+            ):
+                latest_joint[tenor] = joint
+                latest_effective[tenor] = effective
+                latest_incoming[tenor] = row
+        for label in ("2Y", "5Y", "10Y", "30Y"):
+            if label not in latest_incoming:
+                raise ValueError(
+                    f"no switch feed event effective on or before settlement for {label}"
+                )
+        knot_rows = _bootstrap_knot_rows(curve_section)
+        knot_yields = {
+            str(row.get("tenor")).strip(): _require_float(
+                row.get("yield_percent", ""), "yield_percent"
+            )
+            for row in knot_rows
+        }
+        observed = _observed_benchmark_yields(snapshot)
+        checked = 0
+        worst_yield = 0.0
+        for row in instrument_rows:
+            label = str(row.get("tenor")).strip()
+            maturity = _parse_date(row.get("maturity_date"))
+            if maturity is None:
+                raise ValueError(f"instrument maturity for {label} is unparseable")
+            if not maturity > settlement:
+                raise ValueError(f"instrument maturity for {label} must be after settlement")
+            residual = (maturity - settlement).days / 365.0
+            if residual <= 0.0 or residual > MAX_TENOR_YEARS:
+                raise ValueError(f"instrument residual for {label} is out of range")
+            coupon = _require_float(row.get("coupon_percent", ""), "coupon_percent")
+            if not MIN_YIELD <= coupon <= MAX_YIELD:
+                raise ValueError(f"instrument coupon for {label} is out of range")
+            bond_yield = _require_float(row.get("yield_percent", ""), "yield_percent")
+            if not MIN_YIELD <= bond_yield <= MAX_YIELD:
+                raise ValueError(f"instrument yield for {label} is out of range")
+            cashflow_count = _require_int(row.get("cashflow_count", ""), "cashflow_count")
+            if cashflow_count <= 0:
+                raise ValueError(f"cashflow count for {label} must be positive")
+            if cashflow_count > MAX_CASHFLOWS_PER_INSTRUMENT:
+                raise ValueError(f"cashflow count for {label} exceeds the cap")
+            issue = BenchmarkIssue(
+                maturity_date=maturity,
+                coupon_percent=coupon,
+                payments_per_year=2,
+            )
+            flows = generate_cashflows(settlement, issue)
+            if len(flows) != cashflow_count:
+                raise ValueError(
+                    f"schedule recompute for {label} gives {len(flows)} cashflows, "
+                    f"stored {cashflow_count}"
+                )
+            event = latest_incoming.get(label)
+            if event is None:
+                raise ValueError(f"no switch feed incoming leg for {label}")
+            incoming_maturity_raw = event.get("incoming_maturity")
+            if incoming_maturity_raw is None:
+                raise ValueError(f"switch feed incoming maturity for {label} is null")
+            incoming_maturity = _parse_date(incoming_maturity_raw)
+            if incoming_maturity is None:
+                raise ValueError(f"switch feed incoming maturity for {label} is bad")
+            if incoming_maturity != maturity:
+                raise ValueError(
+                    f"instrument maturity for {label} {maturity.isoformat()} "
+                    f"disagrees with feed {incoming_maturity.isoformat()}"
+                )
+            incoming_coupon_raw = event.get("incoming_coupon_percent")
+            if incoming_coupon_raw is None:
+                raise ValueError(f"switch feed incoming coupon for {label} is null")
+            incoming_coupon = _require_float(incoming_coupon_raw, "incoming_coupon")
+            if abs(incoming_coupon - coupon) > 1e-9:
+                raise ValueError(f"instrument coupon for {label} disagrees with the feed")
+            if label not in knot_yields:
+                raise ValueError(f"knot yield for {label} is missing for V24")
+            worst_yield = max(
+                worst_yield,
+                _check_yield_agreement(
+                    label, knot_yields[label], bond_yield, observed[label], tolerance_bp
+                ),
+            )
+            checked += 1
+        return CheckResult(
+            "V24",
+            worst_yield <= tolerance_bp,
+            f"{checked} instruments mature after settlement with recomputed "
+            f"schedules within the {MAX_CASHFLOWS_PER_INSTRUMENT} cap, "
+            f"incoming legs agreeing with the switch feed, and knot, "
+            f"instrument, and observed yields within {tolerance_bp} bp "
+            f"(worst {worst_yield:.4f} bp; unit: mixed)",
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        return CheckResult("V24", False, f"instrument feed cross-check failed: {exc}")
+
+
+def _check_v25_solver(snapshot: dict[str, Any], tolerance_bp: float) -> CheckResult:
+    """Check V25 by re-running the sequential solver from stored yields."""
+    from goc_rates.bootstrap import (
+        BOOTSTRAP_METHOD,
+        Instrument,
+        bootstrap_curve,
+    )
+    from goc_rates.bootstrap import discount_factor as bootstrap_discount
+    from goc_rates.bootstrap import price_from_curve as bootstrap_price
+    from goc_rates.bootstrap import zero_yield_percent as bootstrap_zero
+    from goc_rates.cashflows import dirty_price_from_yield
+    from goc_rates.config import BenchmarkIssue
+    from goc_rates.limits import (
+        MAX_BOOTSTRAP_ANCHORS,
+        MAX_TENOR_YEARS,
+        MAX_YIELD,
+        MIN_YIELD,
+    )
+
+    try:
+        curve_section = _curve_section(snapshot)
+        if not isinstance(curve_section, dict):
+            raise ValueError("curve section is missing")
+        if curve_section.get("method") != BOOTSTRAP_METHOD:
+            raise ValueError(f"curve method must be {BOOTSTRAP_METHOD}")
+        settlement = _bootstrap_settlement(curve_section)
+        instrument_rows = _bootstrap_instruments(curve_section)
+        anchor_rows = _bootstrap_anchors(curve_section)
+        if len(anchor_rows) > MAX_BOOTSTRAP_ANCHORS:
+            raise ValueError("anchor count exceeds the cap before recompute")
+        if len(anchor_rows) != len(instrument_rows):
+            raise ValueError("anchor count must match the instrument count")
+        stored_zeros = curve_section.get("zero_yields")
+        if not isinstance(stored_zeros, dict):
+            raise ValueError("stored zero_yields mapping is missing")
+        knot_rows = _bootstrap_knot_rows(curve_section)
+        knot_yields = {
+            str(row.get("tenor")).strip(): _require_float(
+                row.get("yield_percent", ""), "yield_percent"
+            )
+            for row in knot_rows
+        }
+        observed = _observed_benchmark_yields(snapshot)
+        worst_agreement = 0.0
+        for label in ("2Y", "5Y", "10Y", "30Y"):
+            if label not in knot_yields:
+                raise ValueError(f"knot yield for {label} is missing for V25")
+            if label not in observed:
+                raise ValueError(f"observed benchmark for {label} is missing for V25")
+        issues: dict[str, BenchmarkIssue] = {}
+        yields: dict[str, float] = {}
+        maturities: dict[str, dt.date] = {}
+        for row in instrument_rows:
+            label = str(row.get("tenor")).strip()
+            maturity = _parse_date(row.get("maturity_date"))
+            if maturity is None:
+                raise ValueError(f"instrument maturity for {label} is unparseable")
+            coupon = _require_float(row.get("coupon_percent", ""), "coupon_percent")
+            bond_yield = _require_float(row.get("yield_percent", ""), "yield_percent")
+            if not MIN_YIELD <= coupon <= MAX_YIELD:
+                raise ValueError(f"instrument coupon for {label} is out of range")
+            if not MIN_YIELD <= bond_yield <= MAX_YIELD:
+                raise ValueError(f"instrument yield for {label} is out of range")
+            worst_agreement = max(
+                worst_agreement,
+                _check_yield_agreement(
+                    label, knot_yields[label], bond_yield, observed[label], tolerance_bp
+                ),
+            )
+            issues[label] = BenchmarkIssue(
+                maturity_date=maturity,
+                coupon_percent=coupon,
+                payments_per_year=2,
+            )
+            yields[label] = bond_yield
+            maturities[label] = maturity
+        anchor_years: list[float] = []
+        anchor_discounts: list[float] = []
+        anchor_payments: list[dt.date] = []
+        for row in anchor_rows:
+            payment = _parse_date(row.get("payment_date"))
+            if payment is None:
+                raise ValueError("anchor payment_date is unparseable")
+            years = _require_float(row.get("years_from_settlement", ""), "years_from_settlement")
+            discount = _require_float(row.get("discount", ""), "discount")
+            if not years > 0.0 or years > MAX_TENOR_YEARS:
+                raise ValueError("anchor years are outside the bounded range")
+            if not 0.0 < discount <= 1.0:
+                raise ValueError("anchor discount must be in (0, 1]")
+            expected_years = (payment - settlement).days / 365.0
+            if abs(years - expected_years) > 1e-9:
+                raise ValueError("anchor years must match ACT/365 from settlement")
+            anchor_years.append(years)
+            anchor_discounts.append(discount)
+            anchor_payments.append(payment)
+        order = sorted(range(len(anchor_years)), key=lambda i: anchor_years[i])
+        anchor_years = [anchor_years[i] for i in order]
+        anchor_discounts = [anchor_discounts[i] for i in order]
+        anchor_payments = [anchor_payments[i] for i in order]
+        if any(
+            second <= first for first, second in zip(anchor_years, anchor_years[1:], strict=False)
+        ):
+            raise ValueError("anchor years must be strictly increasing")
+        if any(
+            first <= second
+            for first, second in zip(anchor_discounts, anchor_discounts[1:], strict=False)
+        ):
+            raise ValueError("anchor discounts must be strictly decreasing")
+        if sorted(anchor_payments) != sorted(maturities.values()):
+            raise ValueError("anchor payments must match the instrument maturities")
+        instruments = [
+            Instrument(
+                tenor_label=label,
+                issue=issues[label],
+                yield_percent=yields[label],
+            )
+            for label in ("2Y", "5Y", "10Y", "30Y")
+        ]
+        solved = bootstrap_curve(settlement, instruments)
+        solved_by_payment = {anchor.payment_date: anchor for anchor in solved.anchors}
+        worst_anchor = 0.0
+        worst_zero = 0.0
+        worst_reprice = 0.0
+        for label in ("2Y", "5Y", "10Y", "30Y"):
+            maturity = maturities[label]
+            solved_anchor = solved_by_payment.get(maturity)
+            if solved_anchor is None:
+                raise ValueError(f"solved curve is missing an anchor for {label}")
+            stored_index = anchor_payments.index(maturity)
+            stored_discount = anchor_discounts[stored_index]
+            anchor_bp = abs(solved_anchor.discount - stored_discount) / stored_discount * 10000.0
+            worst_anchor = max(worst_anchor, anchor_bp)
+            zero_entry = stored_zeros.get(label)
+            if not isinstance(zero_entry, dict):
+                raise ValueError(f"stored zero for {label} must be a Quantity")
+            stored_zero = _require_float(zero_entry.get("value", ""), "zero value")
+            recomputed_zero = bootstrap_zero(solved, solved_anchor.years_from_settlement)
+            worst_zero = max(worst_zero, abs(recomputed_zero - stored_zero) * 100.0)
+            target = dirty_price_from_yield(settlement, issues[label], yields[label])
+            model = bootstrap_price(solved, settlement, issues[label])
+            error_bp = abs(model - target) * 100.0
+            worst_reprice = max(worst_reprice, error_bp)
+            for row in instrument_rows:
+                if isinstance(row, dict) and str(row.get("tenor")).strip() == label:
+                    error_entry = row.get("reprice_error_bp")
+                    if not isinstance(error_entry, dict):
+                        raise ValueError(f"reprice_error_bp for {label} must map")
+                    stored_error = _require_float(error_entry.get("value", ""), "reprice_error")
+                    if abs(stored_error - error_bp) > tolerance_bp:
+                        raise ValueError(f"stored reprice error for {label} does not recompute")
+        if (
+            abs(bootstrap_discount(solved, anchor_years[0]) - anchor_discounts[0])
+            / anchor_discounts[0]
+            * 10000.0
+            > tolerance_bp
+        ):
+            raise ValueError("interpolated discount at the first anchor drifted")
+        worst = max(worst_anchor, worst_zero, worst_reprice, worst_agreement)
+        return CheckResult(
+            "V25",
+            worst <= tolerance_bp,
+            f"solver worst {worst:.4f} bp within {tolerance_bp} bp "
+            f"(anchors {worst_anchor:.4f} bp, zeros {worst_zero:.4f} bp, "
+            f"reprice {worst_reprice:.4f} bp, "
+            f"yield agreement {worst_agreement:.4f} bp; unit: bp)",
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        return CheckResult("V25", False, f"solver recompute failed: {exc}")
+
+
+def _run_phase6_checks(
+    snapshot: dict[str, Any],
+    tolerance_bp: float = TOLERANCE_BP,
+) -> list[CheckResult]:
+    """Run checks V24 and V25 for the Phase 6 true bootstrap curve.
+
+    V24 cross-checks stored instruments, recomputed cashflow schedules,
+    switch feed incoming legs, and knot, instrument, and observed yield
+    agreement. V25 re-runs the sequential solver from stored yields and
+    checks anchors, zero inversion at knots, dirty repricing, and the
+    same three way yield agreement. A legacy par approx curve carries no
+    instruments or anchors, so both checks fail closed with an explicit
+    message.
+    """
+    curve_section = _curve_section(snapshot)
+    if not _is_bootstrap_method(curve_section):
+        return [
+            CheckResult(
+                "V24",
+                False,
+                "instrument feed cross-check needs the true bootstrap method",
+            ),
+            CheckResult(
+                "V25",
+                False,
+                "solver recompute needs the true bootstrap method",
+            ),
+        ]
+    return [
+        _check_v24_instrument_feed(snapshot, tolerance_bp),
+        _check_v25_solver(snapshot, tolerance_bp),
+    ]
 
 
 def _quantity_value(node: Any, name: str) -> float:

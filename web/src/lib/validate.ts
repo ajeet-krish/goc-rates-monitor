@@ -35,9 +35,9 @@ const ALLOWED_QUALITIES: ReadonlySet<string> = new Set([
   "revised",
 ]);
 
-/** Expected check ids for a passing verify report, mirrors V01 to V23 in verify.py. */
+/** Expected check ids for a passing verify report, mirrors V01 to V25 in verify.py. */
 export const EXPECTED_VERIFY_IDS: ReadonlyArray<string> = Array.from(
-  { length: 23 },
+  { length: 25 },
   (_, i) => "V" + String(i + 1).padStart(2, "0")
 );
 /** Closed spread tenor set, mirrors the benchmark map in config/benchmark_map.yaml. */
@@ -46,7 +46,7 @@ export const ALLOWED_SPREAD_TENORS: ReadonlyArray<SpreadTenor> = ["2Y", "5Y", "1
 export const MAX_KNOTS = 10;
 export const MAX_SPREAD_RECORDS = 2000;
 export const MAX_BACKTEST_OBS = 2000;
-export const MAX_VERIFY_CHECKS = 23;
+export const MAX_VERIFY_CHECKS = 25;
 export const MAX_CPI_COMPONENTS = 128;
 export const MAX_CPI_MONTHS = 240;
 export const MAX_SWITCH_EVENTS = 64;
@@ -73,6 +73,13 @@ const SOURCE_ID_PATTERN =
   /^(derived|valet|fred|statcan):[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const MAX_SOURCE_ID_LENGTH = 80;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+/** Curve method ids mirrored from src/goc_rates/curve.py and bootstrap.py. */
+const PAR_METHOD = "par_approx_semiannual_log_discount_v1";
+const BOOTSTRAP_METHOD = "true_bootstrap_semiannual_log_discount_v1";
+/** Bootstrap instrument and anchor caps mirror limits.py cashflow and knot caps. */
+const MAX_CASHFLOWS_PER_INSTRUMENT = 130;
+const MAX_BOOTSTRAP_ROWS = 10;
+const MAX_TENOR_YEARS = 60;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -178,6 +185,212 @@ function collectQuantities(
 function assertIsoDate(value: unknown, path: string): asserts value is string {
   if (typeof value !== "string" || !isStrictIsoDate(value)) {
     fail(path, "must be a strict ISO YYYY-MM-DD date: " + JSON.stringify(value));
+  }
+}
+
+/**
+ * Validate true bootstrap fields, mirroring build_bootstrap_curve_section
+ * in src/goc_rates/bootstrap.py. Fields validate when present so legacy
+ * par approx snapshots still load, but the bootstrap method id requires
+ * the full contract: is_par_approx false, is_zero true, a settlement
+ * date, per instrument cashflows with dirty prices and reprice errors
+ * in bp, and solved discount anchors. Knot, instrument, and anchor
+ * tenor sets must agree when all three are present.
+ */
+function assertBootstrapInstrument(node: unknown, path: string): void {
+  if (!isRecord(node)) {
+    fail(path, "instrument must be an object");
+  }
+  if (typeof node.tenor !== "string" || node.tenor.length === 0) {
+    fail(path + ".tenor", "tenor must be a non empty string");
+  }
+  assertIsoDate(node.maturity_date, path + ".maturity_date");
+  assertFiniteNumber(node.coupon_percent, path + ".coupon_percent");
+  if (node.coupon_unit !== "percent") {
+    fail(path + ".coupon_unit", "coupon unit must be percent, got " + JSON.stringify(node.coupon_unit));
+  }
+  if (node.yield_percent !== undefined) {
+    assertFiniteNumber(node.yield_percent, path + ".yield_percent");
+  }
+  if (node.yield_unit !== undefined && node.yield_unit !== "percent_yield" && node.yield_unit !== "percent") {
+    fail(path + ".yield_unit", "yield unit must be percent_yield or percent");
+  }
+  const count = node.cashflow_count;
+  if (typeof count !== "number" || !Number.isInteger(count) || count <= 0) {
+    fail(path + ".cashflow_count", "cashflow_count must be a positive integer");
+  }
+  if (count > MAX_CASHFLOWS_PER_INSTRUMENT) {
+    fail(
+      path + ".cashflow_count",
+      "cashflow_count exceeds the " + MAX_CASHFLOWS_PER_INSTRUMENT + " cap, got " + count
+    );
+  }
+  if (node.cashflow_count_unit !== undefined && node.cashflow_count_unit !== "count") {
+    fail(path + ".cashflow_count_unit", "cashflow_count unit must be count");
+  }
+  const dirty = node.dirty_price;
+  if (isRecord(dirty)) {
+    assertFiniteNumber(dirty.value, path + ".dirty_price.value");
+    if ((dirty.value as number) <= 0) {
+      fail(path + ".dirty_price.value", "dirty price must be positive");
+    }
+    if (dirty.unit !== "price_units_per_100_face") {
+      fail(path + ".dirty_price.unit", "dirty price unit must be price_units_per_100_face");
+    }
+  } else if (typeof dirty === "number") {
+    assertFiniteNumber(dirty, path + ".dirty_price");
+    if (node.dirty_price_unit !== "price_units_per_100_face") {
+      fail(path + ".dirty_price_unit", "dirty price unit must be price_units_per_100_face");
+    }
+  } else {
+    fail(path + ".dirty_price", "dirty_price must be a quantity object or a number with dirty_price_unit");
+  }
+  const reprice = node.reprice_error_bp;
+  if (isRecord(reprice)) {
+    assertFiniteNumber(reprice.value, path + ".reprice_error_bp.value");
+    if (Math.abs(reprice.value as number) > 1.0 + 1e-9) {
+      fail(
+        path + ".reprice_error_bp.value",
+        "reprice error exceeds the 1.0 bp bootstrap tolerance, got " + (reprice.value as number)
+      );
+    }
+    if (reprice.unit !== "bp") {
+      fail(path + ".reprice_error_bp.unit", "reprice error unit must be bp");
+    }
+  } else if (typeof reprice === "number") {
+    assertFiniteNumber(reprice, path + ".reprice_error_bp");
+    if (node.reprice_error_unit !== undefined && node.reprice_error_unit !== "bp") {
+      fail(path + ".reprice_error_unit", "reprice error unit must be bp");
+    }
+  } else {
+    fail(path + ".reprice_error_bp", "reprice_error_bp must be a quantity object or a number in bp");
+  }
+  assertSourceId(node.source_id, path + ".source_id");
+  assertDerivedSource(node.source_id as string, path + ".source_id");
+}
+
+function assertBootstrapAnchor(node: unknown, path: string): void {
+  if (!isRecord(node)) {
+    fail(path, "anchor must be an object");
+  }
+  const dateValue = node.payment_date ?? node.date;
+  if (dateValue === undefined) {
+    fail(path, "anchor needs a payment_date (or date) field");
+  }
+  assertIsoDate(dateValue, path + ".payment_date");
+  assertFiniteNumber(node.years_from_settlement, path + ".years_from_settlement");
+  if ((node.years_from_settlement as number) <= 0) {
+    fail(path + ".years_from_settlement", "years_from_settlement must be positive (unit: duration_years)");
+  }
+  if ((node.years_from_settlement as number) > MAX_TENOR_YEARS) {
+    fail(path + ".years_from_settlement", "years_from_settlement exceeds the tenor cap (unit: duration_years)");
+  }
+  if (node.years_unit !== "duration_years") {
+    fail(path + ".years_unit", "years unit must be duration_years");
+  }
+  assertFiniteNumber(node.discount, path + ".discount");
+  if (!((node.discount as number) > 0) || !((node.discount as number) <= 1)) {
+    fail(path + ".discount", "anchor discount must be in (0, 1] (unit: unitless_ratio)");
+  }
+  if (node.discount_unit !== "unitless_ratio") {
+    fail(path + ".discount_unit", "discount unit must be unitless_ratio");
+  }
+}
+
+function assertBootstrapFields(curve: Record<string, unknown>): void {
+  const base = "snapshot.observations.curve";
+  const method = curve.method;
+  const isBootstrap = method === BOOTSTRAP_METHOD;
+  if (method === PAR_METHOD) {
+    if (curve.is_par_approx !== true) {
+      fail(base, "par approx curve is_par_approx must be true");
+    }
+    if (curve.is_zero !== false) {
+      fail(base, "par approx curve is_zero must be false");
+    }
+  }
+  if (isBootstrap) {
+    if (curve.is_par_approx !== false) {
+      fail(base, "true bootstrap curve is_par_approx must be false");
+    }
+    if (curve.is_zero !== true) {
+      fail(base, "true bootstrap curve is_zero must be true");
+    }
+  }
+  if (curve.settlement_date !== undefined) {
+    assertIsoDate(curve.settlement_date, base + ".settlement_date");
+  } else if (isBootstrap) {
+    fail(base + ".settlement_date", "true bootstrap curve needs a settlement_date");
+  }
+  let instruments: unknown[] | null = null;
+  if (curve.instruments !== undefined) {
+    if (!Array.isArray(curve.instruments)) {
+      fail(base + ".instruments", "instruments must be an array");
+    }
+    if (curve.instruments.length === 0 || curve.instruments.length > MAX_BOOTSTRAP_ROWS) {
+      fail(
+        base + ".instruments",
+        "instruments must hold 1 to " + MAX_BOOTSTRAP_ROWS + " rows, got " + curve.instruments.length
+      );
+    }
+    instruments = curve.instruments as unknown[];
+    instruments.forEach((row, i) => assertBootstrapInstrument(row, base + ".instruments[" + i + "]"));
+  } else if (isBootstrap) {
+    fail(base + ".instruments", "true bootstrap curve needs an instruments array");
+  }
+  let anchors: unknown[] | null = null;
+  if (curve.anchors !== undefined) {
+    if (!Array.isArray(curve.anchors)) {
+      fail(base + ".anchors", "anchors must be an array");
+    }
+    if (curve.anchors.length === 0 || curve.anchors.length > MAX_BOOTSTRAP_ROWS) {
+      fail(
+        base + ".anchors",
+        "anchors must hold 1 to " + MAX_BOOTSTRAP_ROWS + " rows, got " + curve.anchors.length
+      );
+    }
+    anchors = curve.anchors as unknown[];
+    anchors.forEach((row, i) => assertBootstrapAnchor(row, base + ".anchors[" + i + "]"));
+    const years = anchors.map((row) =>
+      isRecord(row) ? Number((row as Record<string, unknown>).years_from_settlement) : NaN
+    );
+    for (let i = 1; i < years.length; i++) {
+      if (!(years[i] > years[i - 1])) {
+        fail(base + ".anchors", "anchor years_from_settlement must be strictly increasing");
+      }
+    }
+    const discounts = anchors.map((row) =>
+      isRecord(row) ? Number((row as Record<string, unknown>).discount) : NaN
+    );
+    for (let i = 1; i < discounts.length; i++) {
+      if (!(discounts[i - 1] > discounts[i])) {
+        fail(base + ".anchors", "anchor discounts must be strictly decreasing");
+      }
+    }
+  } else if (isBootstrap) {
+    fail(base + ".anchors", "true bootstrap curve needs an anchors array");
+  }
+  if (isBootstrap && Array.isArray(curve.knots) && instruments && anchors) {
+    const knotTenors = (curve.knots as unknown[]).map((row) =>
+      isRecord(row) ? String((row as Record<string, unknown>).tenor ?? "") : ""
+    );
+    const instrumentTenors = instruments.map((row) =>
+      isRecord(row) ? String((row as Record<string, unknown>).tenor ?? "") : ""
+    );
+    if (JSON.stringify(knotTenors) !== JSON.stringify(instrumentTenors)) {
+      fail(
+        base + ".instruments",
+        "instrument tenor set must match knots " + JSON.stringify(knotTenors) +
+          ", got " + JSON.stringify(instrumentTenors)
+      );
+    }
+    if (anchors.length !== instruments.length || anchors.length !== knotTenors.length) {
+      fail(
+        base + ".anchors",
+        "anchors, instruments, and knots must agree in length, got " +
+          anchors.length + ", " + instruments.length + ", " + knotTenors.length
+      );
+    }
   }
 }
 
@@ -309,6 +522,7 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
     }
     assertSourceId(curve.curve_source_id, "snapshot.observations.curve.curve_source_id");
     assertDerivedSource(curve.curve_source_id, "snapshot.observations.curve.curve_source_id");
+    assertBootstrapFields(curve);
   }
 
   const spreads = observations.spreads;
@@ -1221,7 +1435,7 @@ export function validateVerify(doc: unknown, expectedDigest?: string): VerifyRep
   if ((doc.checks as unknown[]).length !== MAX_VERIFY_CHECKS) {
     fail(
       "verify.checks",
-      "report must contain exactly " + MAX_VERIFY_CHECKS + " checks (V01 to V23), got " +
+      "report must contain exactly " + MAX_VERIFY_CHECKS + " checks (V01 to V25), got " +
         (doc.checks as unknown[]).length
     );
   }
@@ -1238,7 +1452,7 @@ export function validateVerify(doc: unknown, expectedDigest?: string): VerifyRep
   if (missing.length > 0 || extra.length > 0) {
     fail(
       "verify.checks",
-      "report must contain exactly V01 to V23, missing " +
+      "report must contain exactly V01 to V25, missing " +
         JSON.stringify(missing) +
         " extra " +
         JSON.stringify(extra)

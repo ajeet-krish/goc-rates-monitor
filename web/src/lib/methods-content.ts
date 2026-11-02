@@ -43,7 +43,7 @@ export const CHECK_FAMILIES: CheckFamily[] = [
     range: "V13 to V18",
     title: "Curve and funding",
     blurb:
-      "Curve reprice, discount range, derived units and sources, spread recompute, carry and DV01 recompute, backtest rule and count and next day recompute.",
+      "Bootstrap reprice within 1.0 bp, discount range, derived units and sources, spread recompute, carry and DV01 recompute, backtest rule and count and next day recompute.",
   },
   {
     range: "V19 to V22",
@@ -57,26 +57,33 @@ export const CHECK_FAMILIES: CheckFamily[] = [
     blurb:
       "Switch feed digest, tenor closure, recomputed joint dates, calendar gaps, switch flags, gates, day over day deltas, nullness rules.",
   },
+  {
+    range: "V24 to V25",
+    title: "Bootstrap instruments",
+    blurb:
+      "Settlement dating with residual ACT over 365 years, instrument cashflow counts with dirty prices, reprice errors within 1.0 bp, anchor monotonicity, knot tenor agreement.",
+  },
 ];
 
 export const METHOD_SECTIONS: MethodSection[] = [
   {
     id: "curve",
     kicker: "Curve engine",
-    title: "Par approx, stated plainly",
-    method: "par_approx_semiannual_log_discount_v1",
+    title: "True bootstrap, stated plainly",
+    method: "true_bootstrap_semiannual_log_discount_v1",
     summary:
-      "Benchmark yields enter as par approximations and leave as discounts on a semiannual grid. The curve is an approximation, not a fitted zero curve.",
+      "Benchmark yields to maturity enter as dirty price targets and leave as a solved zero curve on semiannual cashflows. The zero curve is distinct from input YTM: inputs price the bonds, zeros come from the solved discounts.",
     points: [
-      "Inputs are benchmark yields in percent, treated as par approximations (is_par_approx true, is_zero false).",
-      "Knot discounts use D equals 1 over (1 plus y over 2) to the power 2T, with T in years.",
-      "Log discounts interpolate linearly between knots on a half year grid with at least three knots.",
-      "Ends hold the nearest knot yield flat. No extrapolation model is applied past the outer knots.",
+      "Inputs are benchmark yields in percent, priced to dirty targets per 100 face (is_par_approx false, is_zero true).",
+      "Knot tenors are residual ACT over 365 years from settlement to each maturity, in duration_years.",
+      "Each anchor solves by bisection so its model price matches its dirty target within 1.0 bp, with earlier anchors held fixed.",
+      "Log discounts interpolate linearly between anchors. Beyond the last anchor the zero rate holds flat for extrapolation.",
+      "Instruments disclose tenor, maturity date, coupon in percent, cashflow count, dirty price per 100 face, and reprice error in bp. Anchors disclose date, years, and discount. Sparse disclosure degrades the page, never silently.",
       "Long is a 30Y proxy and is labelled as a proxy wherever it appears.",
     ],
     limits: [
-      "Nelson Siegel Svensson fitting is dropped for v1, so the 10s30s slope carries the largest approximation error.",
-      "Zero yields shown beside the curve are derived from the same par approx, not from a separate fit.",
+      "One curve per date, solved in maturity order. No Nelson Siegel Svensson fit and no multi curve tenor basis.",
+      "Zero yields shown beside the curve are the solved semiannual zeros, never requoted inputs.",
     ],
   },
   {
@@ -172,14 +179,15 @@ export const METHOD_SECTIONS: MethodSection[] = [
   {
     id: "verification",
     kicker: "Verification",
-    title: "Twenty three checks, fail closed",
-    method: "verify V01 to V23 at 1.0 bp tolerance",
+    title: "Twenty five checks, fail closed",
+    method: "verify V01 to V25 at 1.0 bp tolerance",
     summary:
-      "Every derived display waits on all twenty three checks. Any failure blocks the build and turns derived values to NA.",
+      "Every derived display waits on all twenty five checks. Any failure blocks the build and turns derived values to NA.",
     points: [
       "Tolerance is 1.0 basis point wherever a basis point comparison applies (mixed units name their own tolerances in the detail text).",
       "Every check names its unit in its detail string, so a pass states what was compared.",
       "The inflation validation flag is honest either way: within_gate or exceeds_gate_needs_explanation both pass V22 when the flag matches the recompute.",
+      "Bootstrap checks V24 and V25 pin settlement dating, cashflow counts, dirty prices, reprice errors, and anchor monotonicity beside the V13 reprice.",
       "The validation flag never blocks the build. A breached gate asks for an explanation note, not a rebuild.",
     ],
     limits: [
@@ -192,13 +200,13 @@ export const METHOD_SECTIONS: MethodSection[] = [
 export const ASSUMPTION_ROWS: AssumptionRow[] = [
   {
     topic: "Curve shape",
-    assumption: "Benchmark yields are par approximations on a semiannual grid.",
-    consequence: "Levels near knots are sound, curvature between far knots is approximate.",
+    assumption: "Benchmark yields price each bond to a dirty target on semiannual cashflows.",
+    consequence: "Levels near knots are solved, curvature between anchors follows log linear discounts.",
   },
   {
     topic: "Curve ends",
-    assumption: "Ends hold the nearest knot yield flat.",
-    consequence: "Short and long extremes inherit knot error instead of model error.",
+    assumption: "Beyond the last anchor the zero rate holds flat.",
+    consequence: "Long end extrapolation inherits the last solved zero, stated openly.",
   },
   {
     topic: "Carry path",
@@ -225,8 +233,8 @@ export const ASSUMPTION_ROWS: AssumptionRow[] = [
 export const LIMIT_ROWS: LimitRow[] = [
   {
     topic: "Curve fit",
-    limit: "No Nelson Siegel Svensson fit in v1.",
-    rationale: "A stated approx beats an unstated model. The 10s30s slope carries the error openly.",
+    limit: "One semiannual bootstrap in maturity order, no Nelson Siegel Svensson fit.",
+    rationale: "Solved anchors beat an unstated model. Bisection error stays within 1.0 bp per bond.",
   },
   {
     topic: "Long tenor",

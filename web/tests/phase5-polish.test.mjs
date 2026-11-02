@@ -230,10 +230,11 @@ describe("phase5 gate nullness: NA names its reason", () => {
     assert.throws(() => validateSnapshot(doc, MOCK_DATE), ValidationError);
   });
 
-  it("accepts 23 checks with V23 present", () => {
+  it("accepts 25 checks with V25 present", () => {
     const report = structuredClone(mockVerify);
-    assert.equal(report.checks.length, 23);
-    assert.equal(report.checks[22].id, "V23");
+    assert.equal(report.checks.length, 25);
+    assert.equal(report.checks[24].id, "V25");
+    assert.equal(report.checks[23].id, "V24");
     assert.doesNotThrow(() => validateVerify(report));
   });
 });
@@ -241,14 +242,14 @@ describe("phase5 gate nullness: NA names its reason", () => {
 describe("phase5 methods pins: ids, families, copy hygiene", () => {
   it("pins the three live method ids", () => {
     const methods = Object.fromEntries(METHOD_SECTIONS.map((s) => [s.id, s.method]));
-    assert.equal(methods.curve, "par_approx_semiannual_log_discount_v1");
+    assert.equal(methods.curve, "true_bootstrap_semiannual_log_discount_v1");
     assert.equal(methods.inflation, "cpi_trim_median_weighted_sa_v1");
     assert.equal(methods.breaks, "benchmark_switch_dod_gate_v1");
   });
 
-  it("covers all 23 checks in four families ending at V23", () => {
-    assert.equal(CHECK_FAMILIES.length, 4);
-    assert.equal(CHECK_FAMILIES[3].range, "V23");
+  it("covers all 25 checks in five families ending at V24 to V25", () => {
+    assert.equal(CHECK_FAMILIES.length, 5);
+    assert.equal(CHECK_FAMILIES[4].range, "V24 to V25");
     assert.match(CHECK_FAMILIES[0].range, /V01 to V12/);
     assert.match(CHECK_FAMILIES[2].range, /V19 to V22/);
   });

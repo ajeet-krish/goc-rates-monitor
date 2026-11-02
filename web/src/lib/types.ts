@@ -35,13 +35,46 @@ export interface CurveKnotRow {
   source_id: string;
 }
 
+export interface CurveInstrumentPrice {
+  value: number;
+  unit: Unit;
+}
+
+export interface CurveInstrumentRow {
+  tenor: string;
+  maturity_date: string;
+  coupon_percent: number;
+  coupon_unit: Unit;
+  yield_percent?: number;
+  yield_unit?: Unit;
+  cashflow_count: number;
+  cashflow_count_unit: Unit;
+  dirty_price: CurveInstrumentPrice;
+  dirty_price_unit?: Unit;
+  reprice_error_bp: CurveInstrumentPrice;
+  reprice_error_unit?: Unit;
+  source_id: string;
+}
+
+export interface CurveAnchorRow {
+  date?: string;
+  payment_date?: string;
+  years_from_settlement: number;
+  years_unit: Unit;
+  discount: number;
+  discount_unit: Unit;
+}
+
 export interface CurveSection {
   method: string;
   is_par_approx: boolean;
   is_zero: boolean;
+  settlement_date?: string;
   knots: CurveKnotRow[];
   discounts: Record<string, Quantity>;
   zero_yields: Record<string, Quantity>;
+  instruments?: CurveInstrumentRow[];
+  anchors?: CurveAnchorRow[];
   curve_source_id: string;
   long_proxy_note?: string;
 }

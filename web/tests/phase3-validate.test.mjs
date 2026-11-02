@@ -151,13 +151,13 @@ describe("validators reject verify problems", () => {
     report.checks = [];
     report.passed_count = 0;
     report.failed_count = 0;
-    assert.throws(() => validateVerify(report), /exactly 23 checks/);
+    assert.throws(() => validateVerify(report), /exactly 25 checks/);
   });
 
-  it("rejects a report with non V01 to V23 ids", () => {
+  it("rejects a report with non V01 to V25 ids", () => {
     const report = goodVerify();
-    report.checks[22].id = "V24";
-    assert.throws(() => validateVerify(report), /exactly V01 to V23/);
+    report.checks[24].id = "V26";
+    assert.throws(() => validateVerify(report), /exactly V01 to V25/);
   });
 
   it("rejects duplicate check ids", () => {
@@ -182,10 +182,10 @@ describe("validators reject verify problems", () => {
     assert.throws(() => validateVerify(report), /inconsistent/);
   });
 
-  it("expects exactly V01 to V23", () => {
+  it("expects exactly V01 to V25", () => {
     assert.equal(EXPECTED_VERIFY_IDS.length, MAX_VERIFY_CHECKS);
     assert.equal(EXPECTED_VERIFY_IDS[0], "V01");
-    assert.equal(EXPECTED_VERIFY_IDS[22], "V23");
+    assert.equal(EXPECTED_VERIFY_IDS[24], "V25");
   });
 
   it("accepts the mock inflation section through the snapshot validator", () => {

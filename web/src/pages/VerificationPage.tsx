@@ -19,6 +19,7 @@ function familyOf(id: string): string {
   if (Number.isFinite(n) && n >= 1 && n <= 12) return "V01 to V12: core snapshot";
   if (Number.isFinite(n) && n >= 13 && n <= 18) return "V13 to V18: curve and funding";
   if (Number.isFinite(n) && n >= 19 && n <= 22) return "V19 to V22: inflation replica";
+  if (Number.isFinite(n) && n >= 24 && n <= 25) return "V24 to V25: bootstrap instruments";
   return "V23: breaks gate";
 }
 

@@ -1,5 +1,5 @@
 {
-  "checked_utc": "2026-11-02T18:08:07+00:00",
+  "checked_utc": "2026-11-02T19:11:36+00:00",
   "checks": [
     {
       "detail": "canonical JSON round trip succeeded",
@@ -57,17 +57,17 @@
       "passed": true
     },
     {
-      "detail": "max age 1 business days (unit: business_days)",
+      "detail": "max age 0 business days (unit: business_days)",
       "id": "V12",
       "passed": true
     },
     {
-      "detail": "curve reprice worst 0.0000 bp within 1.0 bp (unit: bp)",
+      "detail": "bootstrap curve stored worst 0.8884 bp within 1.0 bp (unit: bp)",
       "id": "V13",
       "passed": true
     },
     {
-      "detail": "discounts in (0, 1] and strictly decreasing with increasing tenors (unit: unitless_ratio)",
+      "detail": "bootstrap discounts in (0, 1] and strictly decreasing with increasing tenors and anchors (unit: unitless_ratio)",
       "id": "V14",
       "passed": true
     },
@@ -82,7 +82,7 @@
       "passed": true
     },
     {
-      "detail": "carry diff 0.0000 bp within 1.0 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 100.0000, duration 4.5410 years, DV01 454.10 per million; unit: mixed)",
+      "detail": "bootstrap carry diff 0.0000 bp within 1.0 bp, long zero diff 0.0000 bp, rolled zero diff 0.0000 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 98.2138, duration 4.4376 years, DV01 435.83 per million; unit: mixed)",
       "id": "V17",
       "passed": true
     },
@@ -115,12 +115,22 @@
       "detail": "breaks benchmark_switch_dod_gate_v1 with 4 tenors, dod worst 0.0000 bp within 1.0 bp, threshold 15.0 bp, feed 2026-11-01 sha beebda055035 (unit: mixed)",
       "id": "V23",
       "passed": true
+    },
+    {
+      "detail": "4 instruments mature after settlement with recomputed schedules within the 130 cap, incoming legs agreeing with the switch feed, and knot, instrument, and observed yields within 1.0 bp (worst 0.0000 bp; unit: mixed)",
+      "id": "V24",
+      "passed": true
+    },
+    {
+      "detail": "solver worst 0.8884 bp within 1.0 bp (anchors 0.0000 bp, zeros 0.0000 bp, reprice 0.8884 bp, yield agreement 0.0000 bp; unit: bp)",
+      "id": "V25",
+      "passed": true
     }
   ],
   "failed_count": 0,
   "passed": true,
-  "passed_count": 23,
-  "snapshot_sha256": "ee0ad6c367680a9f2bb0a4019e2fabb3ee66e4ffa13cfa9f876c7e81293fae35",
+  "passed_count": 25,
+  "snapshot_sha256": "f6a63a9f6229142ec3686e3311c066e52e413f0fe99d25863e5d202ef023af0c",
   "tolerance_bp": 1.0,
   "tolerance_unit": "basis_points"
 }

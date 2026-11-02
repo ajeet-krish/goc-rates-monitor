@@ -25,7 +25,7 @@ export default function MethodsPage(props: Props) {
   return (
     <section aria-label="Methods">
       <p class="hero-kicker">Methods: what v1 claims and what it does not</p>
-      <h2 class="hero-headline">Par approx, stated plainly.</h2>
+      <h2 class="hero-headline">True bootstrap, stated plainly.</h2>
       <p class="hero-dek">
         This page renders the shared methods module, then pins the live method
         ids, tolerance, and check count from the current snapshot and verify
@@ -78,7 +78,7 @@ export default function MethodsPage(props: Props) {
           </table>
         </SectionState>
         <p class="figure-caption">
-          Twenty three checks at 1.0 basis point tolerance. Any failure blocks
+          Twenty five checks at 1.0 basis point tolerance. Any failure blocks
           the build and turns derived values to NA.
         </p>
       </div>
