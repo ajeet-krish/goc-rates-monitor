@@ -407,3 +407,71 @@ with real counts, build-data sha verify.
 - [x] Practical implications are actionable
 - [x] All sources cited
 - [x] Research supports phase architecture decisions
+
+## 2026-11-02 - Terminal speed vs daily dashboard: C++/Rust payoff thresholds
+
+Question: what actually makes Bloomberg/finance terminals fast, and would
+C++/Rust help goc-rates-monitor (Python uv pipeline from BoC Valet,
+StatCan bulk, FRED to one daily snapshot JSON; SolidJS static site on
+GitHub Pages with uPlot; 4 benchmark yields, 55 CPI components, daily
+batch after North American close, T+1 lags, no tick data, no order book).
+
+### Key Findings
+| Finding | Source | Confidence | Application |
+|---------|------------|------------|-------------|
+| Terminal latency lives in fanout, not math: Bloomberg Ticker Plant ingests millions of messages per second, B-PIPE serves 35M instruments from 330-plus exchanges via geographically dispersed ticker plants with conflated streaming; speed comes from colo, kernel-bypass networking, delta compression, and local router appliances, not faster yield arithmetic | Bloomberg Ticker Plant story; B-PIPE product page; TechDCoded explainer | High | This project has no streaming leg; nothing here maps to a ticker plant |
+| Bloomberg Terminal is a hybrid: proprietary C++ data-processing core plus embedded Chromium/V8/Node.js with TypeScript UI (R+ framework); performance work is GC minimization, custom allocators, portable columns, coalescing, and WebAssembly for compute kernels, not a full-native UI | Paul Williams NDC talk; Bloomberg JS blog (Temporal, TypeScript at scale); R+ job postings | High | Validates current split: Python compute plus JS Canvas charts; WASM only if a kernel proves hot |
+| Industry pattern is polyglot by plane: C++ for colocated execution and feed handlers, Rust for new low-latency services (Databento, tickstream cite sub-ms pipeline, PTP timestamps, zero-copy), Java/C# for distribution, Python/NumPy for research, TypeScript for dashboards | LuxAlgo language guide; B2Broker HFT infra guide; Databento; tickstream; LSEG RTSDK flavor table (ETA C++ lowest latency, WebSocket highest) | High | Keep research plus batch in Python, dashboards in TypeScript; native only on a measured microsecond path |
+| Chart interaction at this scale is already solved in JS: uPlot cold-renders 166,650 points in about 25 ms at about 100k points per ms, streams 3,600 points at 60 fps at 10 percent CPU; WebGL/WASM only wins past about 100k in-view points or true 60 fps waveform streaming | uPlot bench plus README; ORTEX 2026 bench (100k-bar 33 ms uPlot vs 448 ms lightweight-charts) | High | 10-year daily series (about 2,500 points per line) renders in single-digit ms; no chart rewrite justified |
+| Native payoff threshold is quantitative: Python is fine above about 50 ms round-trip budgets or broker-routed bar strategies; Rust/C++ wins when budgets are single-digit ms, message rates exceed about 10k to 100k per second sustained, or backtests loop millions of windows (pandas 140 ms per window to Rust microseconds in one ML-lab case; tickbar 119M ticks per s Rust vs 4.7M pandas resample) | TierZero threshold matrix; 99francs hot-path sidecar case; tickbar bench; Rustify/PyO3 guides | Medium | Project rates are about 4 to 60 new numbers per day; three orders of magnitude below the switch point |
+| The correct migration shape when latency does bite is hot-path sidecar, not rewrite: keep Python as financial source of truth, extract one control loop to Rust via PyO3/FFI with fallback; full rewrites cost months and add bug surface | 99francs trading-bot migration; nanobook Python-plus-Rust LOB pattern; PyO3 guides (borrow in, move out, GIL release) | High | If a kernel ever needs it, wrap trim/median or curve math in PyO3; never rewrite fetch, verify, or snapshot logic |
+
+### Relevant Equations
+| Equation | Description | Variables |
+|----------|-------------|-----------|
+| `wall = fetch + compute + render + network` | Daily-batch latency budget decomposition | All terms in seconds or ms per run |
+| `speedup = t_python / t_native` | Native payoff estimate (profiled hot path only) | t per window or per message |
+| `breakeven = rewrite_cost / (runs * saved_per_run)` | Whether optimization pays back | Cost in engineer time, saving in seconds |
+| `points = series * obs_per_series` | Chart load estimate | e.g. 6 series times 2,500 days = 15,000 points |
+
+### Validation Data
+| Benchmark | Value | Source | Uncertainty |
+|-----------|-------|--------|-------------|
+| Bloomberg fanout scale | Millions of msgs per s; 35M instruments; 330-plus venues, 325k terminals | Bloomberg Ticker Plant plus B-PIPE pages | Marketing-rounded; ordering is the durable claim |
+| uPlot cold render | 166,650 points in 25 ms; about 100k points per ms thereafter | uPlot bench page | Hardware-specific (desktop Chromium); relative lead over Chart.js/ECharts is durable |
+| uPlot stream | 3,600 points at 60 fps, 10 percent CPU, 12.3 MB RAM | uPlot README | Same hardware caveat |
+| Python fine threshold | Above about 50 ms round-trip budget | TierZero matrix; LuxAlgo guide | Rule of thumb, not a standard |
+| pandas to Rust window | About 140 ms to 1 to 5 ms per window (one lab, 1m/5m bars) | DEV.to lab post | Single-team anecdote; workload-specific |
+| tickbar aggregation | 119M ticks per s Rust vs 4.7M pandas resample (about 25x) | tickbar README bench | Synthetic bench; zero-copy path needed for Python 6.7M figure |
+| This project daily delta | About 4 yields plus about 55 monthly CPI values; snapshot units KB; 10y chart units 10k points | snapshots/2026-10-30/snapshot.json (4 benchmarks observed) | Exact counts vary with CPI bulk vintage |
+
+### Practical Implications
+- No C++ or Rust migration: fetch latency (HTTP seconds plus T+1 source lags of hours) dominates wall time at above 95 percent; compute (curve PCHIP on 4 knots, 55-item trim/median sort, z-scores) is single-digit ms in Python; chart render is single-digit ms in uPlot. Native code would optimize under 1 percent of the budget.
+- Latency budget for this project: fetch 10 to 300 s (Valet seconds, FRED seconds, StatCan bulk zip 1.2 MB weights to 161 MB CPI member, plus scheduled wait for 09:00 to 16:30 ET pubs and T+1 lags); compute under 100 ms; snapshot JSON write plus sha256 under 50 ms; site first paint network-bound (manifest plus per-date JSON, each under 100 KB) with uPlot render under 16 ms. Optimize fetch (retry, caching, manifest `no-store`, per-page lazy JSON), not arithmetic.
+- Keep the Bloomberg-analogous split the project already has: Python batch core (auditable, fail-closed verify V01 to V23 at 1.0 bp) plus TypeScript/Canvas presentation (uPlot). This mirrors Terminal C++-core plus Chromium-UI without the cost.
+- Only revisit native code if scope changes to intraday ticks, order-book replay, or million-row backtests: trigger conditions are sustained above 10k msgs per s, sub-50 ms interaction SLA, or profiled Python kernel above 100 ms per page load. Then use the sidecar pattern (PyO3 around one function, or WASM for a chart kernel), never a rewrite.
+- Concrete next actions: profile before any perf work (`cProfile`/`py-spy` on pipeline, DevTools Performance on site); keep `limits.py` caps as the perf guard; log fetch versus compute timings per run so a future regression is attributable.
+
+### Citations
+1. Bloomberg, "How Bloomberg handles a massive wave of real-time market data in microseconds" - https://www.bloomberg.com/company/stories/how-bloomberg-handles-a-massive-wave-of-real-time-market-data-in-microseconds
+2. Bloomberg, "B-PIPE Real-Time Market Data Feed" - https://professional.bloomberg.com/products/data/enterprise-catalog/real-time-data-feed
+3. Paul Williams, "Developing the Bloomberg Terminal: Local performance and measurement techniques" (NDC) - https://www.youtube.com/watch?v=uqehwCWKVVw
+4. Bloomberg JS Blog, "Temporal: The 9-Year Journey" and "10 Insights from Adopting TypeScript at Scale" - https://bloomberg.github.io/js-blog/post/temporal
+5. LSEG, "Real-Time Market Data APIs and Distribution" (RTSDK flavor/latency table) - https://developers.lseg.com/en/use-cases-catalog/real-time
+6. Databento (Rust, PTP timestamps, 590 us internet median) - https://databento.com
+7. tickstream (Rust pipeline, sub-ms ingest-to-egress) - https://tick-stream.xyz
+8. LuxAlgo, "Best Programming Languages for Algorithmic Trading" - https://www.luxalgo.com/blog/best-programming-languages-for-algorithmic-trading/
+9. B2Broker, "High-Frequency Trading Infrastructure: Technical Guideline" - https://b2broker.com/news/high-frequency-trading-infrastructure/
+10. TierZero, "Python vs Rust for Crypto HFT Bots: Where Python Breaks Down" (50 ms threshold matrix) - https://tierzero.dev/blog/python-vs-rust-hft-bot-crypto-performance
+11. 99francs, "Python to Rust Trading Bot Migration: Latency Case Study" (hot-path sidecar) - https://www.99francs.agency/blog/python-to-rust-trading-bot-migration
+12. gregorian-09/tickbar (119M ticks per s Rust vs 4.7M pandas) - https://github.com/gregorian-09/tickbar
+13. uPlot bench plus README (166,650 points in 25 ms; streaming figures) - https://leeoniya.github.io/uPlot
+14. ORTEX Charts performance bench (uPlot 33 ms vs lightweight-charts 448 ms per 100k bars) - https://ortexcharts.com/docs/performance
+
+### Verification Checklist
+- [x] Findings are from reputable sources
+- [x] Equations are correctly transcribed
+- [x] Validation data includes uncertainty
+- [x] Practical implications are actionable
+- [x] All sources cited
+- [x] Research supports phase architecture decisions
