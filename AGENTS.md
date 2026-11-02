@@ -42,7 +42,7 @@ Keep functions small and pure where practical.
 | Phase 4 | CPI engine trim median validation | Complete |
 | Phase 5 | Inflation breaks verification methods polish | Complete |
 | Phase 6 | True bootstrap with benchmark map post launch | Complete |
-| Phase 7 | History backfill plus terminal UI | In Progress |
+| Phase 7 | History backfill plus terminal UI | Complete |
 
 ## Deep Docs
 
