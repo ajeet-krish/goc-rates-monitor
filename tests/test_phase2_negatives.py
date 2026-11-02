@@ -81,16 +81,48 @@ def _passing_snapshot() -> dict[str, Any]:
             "cross_source_diff_bp": {"value_bp": 0.5, "unit": "basis_points"},
             "staleness": {"max_age_business_days": 1, "unit": "business_days"},
             "curve": curve,
-            "spreads": [
-                {
-                    "date": "2026-10-30",
-                    "ca_date": "2026-10-30",
-                    "us_date": "2026-10-30",
-                    "ca_yield_percent": 3.5,
-                    "us_yield_percent": 3.0,
-                    "spread_bp": 50.0,
-                }
-            ],
+            "spreads": {
+                "status": "ok",
+                "reason": None,
+                "records": [
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "2Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "5Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "10Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "30Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                ],
+            },
             "carry": {
                 "yield_at_maturity_percent": 3.0,
                 "yield_at_rolled_tenor_percent": 3.0,
@@ -252,8 +284,10 @@ def test_v16_missing_leg_dates_fail() -> None:
     observations = snapshot["observations"]
     assert isinstance(observations, dict)
     spreads = observations["spreads"]
-    assert isinstance(spreads, list)
-    record = spreads[0]
+    assert isinstance(spreads, dict)
+    records = spreads["records"]
+    assert isinstance(records, list)
+    record = records[0]
     assert isinstance(record, dict)
     del record["ca_date"]
     item = _check(snapshot, "V16")
@@ -265,7 +299,7 @@ def test_v16_non_dict_record_fails() -> None:
     snapshot = _passing_snapshot()
     observations = snapshot["observations"]
     assert isinstance(observations, dict)
-    observations["spreads"] = [42]
+    observations["spreads"] = {"status": "ok", "reason": None, "records": [42]}
     item = _check(snapshot, "V16")
     assert item["passed"] is False
 
@@ -275,7 +309,7 @@ def test_v16_empty_set_fails() -> None:
     snapshot = _passing_snapshot()
     observations = snapshot["observations"]
     assert isinstance(observations, dict)
-    observations["spreads"] = []
+    observations["spreads"] = {"status": "ok", "reason": None, "records": []}
     item = _check(snapshot, "V16")
     assert item["passed"] is False
 
@@ -491,6 +525,38 @@ def test_cli_wired_real_quantities() -> None:
     assert section["method"] == CURVE_METHOD
     assert section["curve_source_id"] == "derived:curve"
     assert len(section["knots"]) == 4
+
+
+def test_v16_three_tenor_subset_fails() -> None:
+    """An ok envelope with only 2Y 5Y 10Y fails V16 on the tenor set."""
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    spreads = observations["spreads"]
+    assert isinstance(spreads, dict)
+    records = spreads["records"]
+    assert isinstance(records, list)
+    spreads["records"] = [records[0], records[1], records[2]]
+    item = _check(snapshot, "V16")
+    assert item["passed"] is False
+    assert "complete tenor set" in str(item["detail"])
+
+
+def test_v16_duplicate_tenor_fails() -> None:
+    """An ok envelope with two 2Y records and no 30Y fails V16."""
+    snapshot = _passing_snapshot()
+    observations = snapshot["observations"]
+    assert isinstance(observations, dict)
+    spreads = observations["spreads"]
+    assert isinstance(spreads, dict)
+    records = spreads["records"]
+    assert isinstance(records, list)
+    first = records[0]
+    assert isinstance(first, dict)
+    spreads["records"] = [records[0], dict(first), records[1], records[2]]
+    item = _check(snapshot, "V16")
+    assert item["passed"] is False
+    assert "complete tenor set" in str(item["detail"])
 
 
 def test_cli_skeleton_still_returns_1(tmp_path: Path, capsys: Any) -> None:

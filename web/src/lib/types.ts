@@ -46,13 +46,22 @@ export interface CurveSection {
   long_proxy_note?: string;
 }
 
+export type SpreadTenor = "2Y" | "5Y" | "10Y" | "30Y";
+
 export interface SpreadRecord {
+  tenor: SpreadTenor;
   date: string;
   ca_date: string;
   us_date: string;
   ca_yield_percent: number;
   us_yield_percent: number;
   spread_bp: number;
+}
+
+export interface SpreadSection {
+  status: "ok" | "missing";
+  reason: string | null;
+  records: SpreadRecord[];
 }
 
 export interface CarrySection {
@@ -203,7 +212,7 @@ export interface SnapshotDoc {
     cross_source_diff_bp?: { value_bp: number; unit: string };
     staleness?: { max_age_business_days: number; unit: string };
     curve?: CurveSection;
-    spreads?: SpreadRecord[];
+    spreads?: SpreadSection;
     carry?: CarrySection;
     risk?: RiskSection;
     backtest?: BacktestSection;

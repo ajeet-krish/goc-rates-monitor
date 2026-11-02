@@ -419,38 +419,25 @@ def _derived_quantities(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     return collected
 
 
-def _spread_records(snapshot: dict[str, Any]) -> list[Any] | None:
-    """Return raw spread records from any known section, else None.
+def _spreads_envelope(snapshot: dict[str, Any]) -> Any:
+    """Return the spreads envelope mapping from any known section, else None.
 
-    Records are returned unfiltered so the V16 check can fail closed on
-    non-dict entries or an empty set instead of passing vacuously.
+    The envelope is the typed mapping with status, reason, and records.
+    Legacy arrays are returned as is so V16 can fail closed with an
+    explicit envelope message instead of passing vacuously.
     """
     observations = snapshot.get("observations")
     if not isinstance(observations, dict):
         return None
-    candidates: list[Any] = []
     for key in ("spreads", "canada_us_spreads"):
-        section = observations.get(key)
-        if isinstance(section, list):
-            candidates = section
-            break
-        if isinstance(section, dict) and isinstance(section.get("records"), list):
-            candidates = section["records"]
-            break
-    if not candidates:
-        derived = observations.get("derived")
-        if isinstance(derived, dict):
-            for key in ("spreads", "canada_us_spreads"):
-                section = derived.get(key)
-                if isinstance(section, list):
-                    candidates = section
-                    break
-                if isinstance(section, dict) and isinstance(section.get("records"), list):
-                    candidates = section["records"]
-                    break
-    if not candidates:
-        return None
-    return candidates
+        if key in observations:
+            return observations.get(key)
+    derived = observations.get("derived")
+    if isinstance(derived, dict):
+        for key in ("spreads", "canada_us_spreads"):
+            if key in derived:
+                return derived.get(key)
+    return None
 
 
 def _carry_section(snapshot: dict[str, Any]) -> Any:
@@ -497,6 +484,8 @@ def _run_phase2_checks(
     """Run checks V13 to V18 for the Phase 2 curve engine."""
     from goc_rates.analytics import canada_us_spread_bp, carry_roll_bp
     from goc_rates.backtest import BACKTEST_RULE, run_backtest
+    from goc_rates.live_snapshot import FRED_DEGRADED_REASON
+    from goc_rates.live_snapshot import TENORS as SPREAD_TENORS
     from goc_rates.risk import dv01_per_million, modified_duration, par_bond_price
 
     results: list[CheckResult] = []
@@ -647,17 +636,105 @@ def _run_phase2_checks(
         except (ValueError, TypeError, ArithmeticError) as exc:
             results.append(CheckResult("V15", False, f"derived check failed: {exc}"))
 
-    records = _spread_records(snapshot)
-    if records is None:
-        raw_spreads: Any = None
-        observations_raw = snapshot.get("observations")
-        if isinstance(observations_raw, dict):
-            raw_spreads = observations_raw.get("spreads")
-            if raw_spreads is None:
-                derived_raw = observations_raw.get("derived")
-                if isinstance(derived_raw, dict):
-                    raw_spreads = derived_raw.get("spreads")
-        if _is_degraded_missing(raw_spreads, fred_api_key):
+    envelope = _spreads_envelope(snapshot)
+    if not isinstance(envelope, dict):
+        if isinstance(envelope, list):
+            results.append(
+                CheckResult(
+                    "V16",
+                    False,
+                    "spread envelope must be a mapping with "
+                    "status, reason, and records, got legacy array (unit: bp)",
+                )
+            )
+        else:
+            results.append(
+                CheckResult(
+                    "V16",
+                    False,
+                    "spread envelope section is missing, expected typed "
+                    "status, reason, and records (unit: bp)",
+                )
+            )
+    elif envelope.get("status") == "ok":
+        reason = envelope.get("reason")
+        records = envelope.get("records")
+        if reason is not None:
+            results.append(
+                CheckResult("V16", False, "spread ok envelope reason must be null (unit: bp)")
+            )
+        elif not isinstance(records, list) or not records:
+            results.append(
+                CheckResult(
+                    "V16",
+                    False,
+                    "spread ok envelope needs at least one recomputing record (unit: bp)",
+                )
+            )
+        else:
+            try:
+                if len(records) > MAX_SPREAD_RECORDS:
+                    raise ValueError("spread record count exceeds the cap before recompute")
+                worst = 0.0
+                seen_tenors: list[str] = []
+                for record in records:
+                    if not isinstance(record, dict):
+                        raise ValueError("spread records must be mappings, no filtering")
+                    tenor = record.get("tenor")
+                    if tenor not in SPREAD_TENORS:
+                        raise ValueError(
+                            "spread records must carry a tenor "
+                            f"in {list(SPREAD_TENORS)}, no positional reads"
+                        )
+                    assert isinstance(tenor, str)
+                    seen_tenors.append(tenor)
+                    if "ca_date" not in record or "us_date" not in record:
+                        raise ValueError("spread legs must carry explicit ca_date and us_date")
+                    ca_yield = _require_float(record.get("ca_yield_percent", ""), "ca_yield")
+                    us_yield = _require_float(record.get("us_yield_percent", ""), "us_yield")
+                    stored = _require_float(record.get("spread_bp", ""), "spread_bp")
+                    expected = canada_us_spread_bp(ca_yield, us_yield)
+                    worst = max(worst, abs(expected - stored))
+                    record_date = _parse_date(record.get("date"))
+                    if record_date is None:
+                        raise ValueError("spread record date is unparseable")
+                    ca_date = _parse_date(record.get("ca_date"))
+                    us_date = _parse_date(record.get("us_date"))
+                    if ca_date != record_date or us_date != record_date:
+                        raise ValueError("spread legs must share the record date")
+                expected_tenors = set(SPREAD_TENORS)
+                if len(seen_tenors) != 4 or set(seen_tenors) != expected_tenors:
+                    raise ValueError(
+                        "spread ok envelope needs the complete tenor set "
+                        f"{sorted(expected_tenors)} with no duplicates, "
+                        f"got {seen_tenors} (unit: bp)"
+                    )
+                results.append(
+                    CheckResult(
+                        "V16",
+                        worst <= tolerance_bp,
+                        f"spreads recompute worst {worst:.4f} bp "
+                        f"within {tolerance_bp} bp on same dates (unit: bp)",
+                    )
+                )
+            except (ValueError, TypeError, ArithmeticError) as exc:
+                results.append(CheckResult("V16", False, f"spread recompute failed: {exc}"))
+    elif envelope.get("status") == "missing":
+        reason = envelope.get("reason")
+        records = envelope.get("records")
+        if not isinstance(records, list) or len(records) != 0:
+            results.append(
+                CheckResult("V16", False, "spread missing records must be empty (unit: bp)")
+            )
+        elif not isinstance(reason, str) or not reason.strip():
+            results.append(
+                CheckResult(
+                    "V16", False, "spread missing envelope reason must be non empty (unit: bp)"
+                )
+            )
+        elif _is_degraded_missing(envelope, fred_api_key) and (
+            envelope.get("reason") == FRED_DEGRADED_REASON
+        ):
             results.append(
                 CheckResult(
                     "V16",
@@ -666,39 +743,13 @@ def _run_phase2_checks(
                 )
             )
         else:
-            results.append(CheckResult("V16", False, "spread records section is missing"))
-    else:
-        try:
-            if len(records) > MAX_SPREAD_RECORDS:
-                raise ValueError("spread record count exceeds the cap before recompute")
-            worst = 0.0
-            for record in records:
-                if not isinstance(record, dict):
-                    raise ValueError("spread records must be mappings, no filtering")
-                if "ca_date" not in record or "us_date" not in record:
-                    raise ValueError("spread legs must carry explicit ca_date and us_date")
-                ca_yield = _require_float(record.get("ca_yield_percent", ""), "ca_yield")
-                us_yield = _require_float(record.get("us_yield_percent", ""), "us_yield")
-                stored = _require_float(record.get("spread_bp", ""), "spread_bp")
-                expected = canada_us_spread_bp(ca_yield, us_yield)
-                worst = max(worst, abs(expected - stored))
-                record_date = _parse_date(record.get("date"))
-                if record_date is None:
-                    raise ValueError("spread record date is unparseable")
-                ca_date = _parse_date(record.get("ca_date"))
-                us_date = _parse_date(record.get("us_date"))
-                if ca_date != record_date or us_date != record_date:
-                    raise ValueError("spread legs must share the record date")
             results.append(
-                CheckResult(
-                    "V16",
-                    worst <= tolerance_bp,
-                    f"spreads recompute worst {worst:.4f} bp "
-                    f"within {tolerance_bp} bp on same dates (unit: bp)",
-                )
+                CheckResult("V16", False, "spreads missing without FRED degraded marker (unit: bp)")
             )
-        except (ValueError, TypeError, ArithmeticError) as exc:
-            results.append(CheckResult("V16", False, f"spread recompute failed: {exc}"))
+    else:
+        results.append(
+            CheckResult("V16", False, "spread envelope status must be ok or missing (unit: bp)")
+        )
 
     carry = _carry_section(snapshot)
     risk = _risk_section(snapshot)

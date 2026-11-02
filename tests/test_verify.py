@@ -63,16 +63,48 @@ def _passing_snapshot() -> dict[str, Any]:
             "cross_source_diff_bp": {"value_bp": 0.5, "unit": "basis_points"},
             "staleness": {"max_age_business_days": 1, "unit": "business_days"},
             "curve": curve,
-            "spreads": [
-                {
-                    "date": "2026-10-30",
-                    "ca_date": "2026-10-30",
-                    "us_date": "2026-10-30",
-                    "ca_yield_percent": 3.5,
-                    "us_yield_percent": 3.0,
-                    "spread_bp": 50.0,
-                }
-            ],
+            "spreads": {
+                "status": "ok",
+                "reason": None,
+                "records": [
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "2Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "5Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "10Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                    {
+                        "date": "2026-10-30",
+                        "tenor": "30Y",
+                        "ca_date": "2026-10-30",
+                        "us_date": "2026-10-30",
+                        "ca_yield_percent": 3.5,
+                        "us_yield_percent": 3.0,
+                        "spread_bp": 50.0,
+                    },
+                ],
+            },
             "carry": {
                 "yield_at_maturity_percent": 3.0,
                 "yield_at_rolled_tenor_percent": 3.0,

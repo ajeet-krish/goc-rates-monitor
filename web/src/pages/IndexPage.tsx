@@ -15,6 +15,14 @@ export default function IndexPage(props: Props) {
   const knots = () => props.snapshot?.observations.curve?.knots ?? [];
   const twoY = () => knots().find((k) => k.tenor === "2Y")?.yield_percent ?? null;
   const tenY = () => knots().find((k) => k.tenor === "10Y")?.yield_percent ?? null;
+  // Spreads envelope: the desk reads the stored 10Y record. Null when
+  // the envelope is absent or degraded to a missing marker with a reason.
+  const tenYearSpreadBp = () => {
+    const section = props.snapshot?.observations.spreads;
+    if (!section || section.status !== "ok") return null;
+    const match = section.records.find((r) => r.tenor === "10Y");
+    return match && Number.isFinite(match.spread_bp) ? match.spread_bp : null;
+  };
   // No recompute: the desk reads the stored backtest slope. NA until the
   // pipeline publishes a slope series for this date.
   const slope = () => {
@@ -88,7 +96,7 @@ export default function IndexPage(props: Props) {
                 <tr>
                   <th scope="row">CA-US 10Y</th>
                   <td class="num">
-                    {fmtBp(props.snapshot?.observations.spreads?.[0]?.spread_bp ?? null)}
+                    {fmtBp(tenYearSpreadBp())}
                     <span class="unit-tag">bp</span>
                   </td>
                 </tr>

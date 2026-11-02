@@ -246,3 +246,25 @@ in `/Users/ajeet/Projects/goc-rates-monitor`, plus `npm test`,
 Coverage summary: 173 passed (pytest) plus 74 passed (web), 0 failed. Happy path covered (prior demo fixture and mock snapshot still pass V19 to V22). Edge cases covered (1.5x scale factor distinct from the prior 2.0x probe, single mom tampers with the other leg intact, history versus latest YoY tampers). Error conditions covered (understated declared bulk size caught by the streaming cap, 999 product grammar in V19 V22 and web, duplicate contribution and vector ids, basket year and weight disagree).
 
 Failure analysis: no product code defects found. One interim design note: the understated size probe first needed a doctored ZipInfo (declared 5 bytes, streamed 50 bytes, cap 20) so the precheck passes and the streaming guard is the layer that fails closed. No source changes needed.
+
+## 2026-11-02 - Phase 6 step 6.0: Test Report
+
+Phase 6 step 6.0 spreads envelope negatives in `tests/test_phase2_negatives.py`
+(2 new tests) plus `web/tests/phase3-validate.test.mjs` (2 new tests).
+Run with `uv run pytest` in `/Users/ajeet/Projects/goc-rates-monitor`,
+plus `npm test` and `npm run typecheck` in `web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (230 passed) | PASS | Full pipeline suite, 228 prior plus 2 new envelope negatives |
+| test_v16_three_tenor_subset_fails | PASS | ok envelope with 2Y 5Y 10Y only fails V16 on the complete tenor set |
+| test_v16_duplicate_tenor_fails | PASS | ok envelope with two 2Y records and no 30Y fails V16 on the complete tenor set |
+| uv run ruff check src tests | PASS | All checks passed, no lint faults in the new tests |
+| npm test web (132 passed) | PASS | 130 prior plus 2 new envelope negatives, 20 suites, 0 fail |
+| web rejects an ok envelope with a 3 tenor subset | PASS | Sliced to 3 records fails with exactly plus no duplicates message |
+| web rejects an ok envelope with a duplicate tenor and no 30Y | PASS | Doubled 2Y with 30Y dropped fails with no duplicates message |
+| npm run typecheck | PASS | tsc noEmit clean |
+
+Coverage summary: 230 passed (pytest) plus 132 passed (web), 0 failed. Happy path covered (prior 4 tenor ok fixtures still pass V16 and validateSnapshot). Edge cases covered (3 record subset boundary, exactly 4 records with one duplicated label). Error conditions covered (subset envelope fails V16 and validateSnapshot, duplicate tenor envelope fails V16 and validateSnapshot).
+
+Failure analysis: no product code defects found. Both the Python V16 check and the web validator already enforced the exact 2Y 5Y 10Y 30Y set with no duplicates, so both negative probes failed closed on the first run with no source changes needed. No interim test faults.

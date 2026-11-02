@@ -1,5 +1,5 @@
 import { isStrictIsoDate } from "./asof";
-import type { DataIndex, SnapshotDoc, VerifyReport } from "./types";
+import type { DataIndex, SnapshotDoc, SpreadTenor, VerifyReport } from "./types";
 
 export class ValidationError extends Error {
   constructor(message: string) {
@@ -40,6 +40,8 @@ export const EXPECTED_VERIFY_IDS: ReadonlyArray<string> = Array.from(
   { length: 23 },
   (_, i) => "V" + String(i + 1).padStart(2, "0")
 );
+/** Closed spread tenor set, mirrors the benchmark map in config/benchmark_map.yaml. */
+export const ALLOWED_SPREAD_TENORS: ReadonlyArray<SpreadTenor> = ["2Y", "5Y", "10Y", "30Y"];
 /** Collection caps mirroring the Python pipeline in src/goc_rates/limits.py. */
 export const MAX_KNOTS = 10;
 export const MAX_SPREAD_RECORDS = 2000;
@@ -311,21 +313,63 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
 
   const spreads = observations.spreads;
   if (spreads !== undefined) {
-    if (!Array.isArray(spreads)) {
-      fail("snapshot.observations.spreads", "spreads must be an array");
+    if (!isRecord(spreads)) {
+      fail("snapshot.observations.spreads", "spreads must be an envelope object");
     }
-    if (spreads.length > MAX_SPREAD_RECORDS) {
+    if (spreads.status !== "ok" && spreads.status !== "missing") {
       fail(
-        "snapshot.observations.spreads",
-        "spreads exceed the " + MAX_SPREAD_RECORDS + " record cap, got " + spreads.length
+        "snapshot.observations.spreads.status",
+        "status must be ok or missing, got " + JSON.stringify(spreads.status)
       );
     }
-    spreads.forEach((record: unknown, i: number) => {
-      const path = "snapshot.observations.spreads[" + i + "]";
+    if (!Array.isArray(spreads.records)) {
+      fail("snapshot.observations.spreads.records", "records must be an array");
+    }
+    if (spreads.records.length > MAX_SPREAD_RECORDS) {
+      fail(
+        "snapshot.observations.spreads.records",
+        "spreads exceed the " + MAX_SPREAD_RECORDS + " record cap, got " + spreads.records.length
+      );
+    }
+    if (spreads.status === "ok") {
+      if (spreads.reason !== null) {
+        fail(
+          "snapshot.observations.spreads.reason",
+          "ok status must carry a null reason, got " + JSON.stringify(spreads.reason)
+        );
+      }
+      if (spreads.records.length === 0) {
+        fail(
+          "snapshot.observations.spreads.records",
+          "ok status must hold at least one record"
+        );
+      }
+    } else {
+      if (typeof spreads.reason !== "string" || spreads.reason.trim().length === 0) {
+        fail(
+          "snapshot.observations.spreads.reason",
+          "missing status must carry a non empty reason"
+        );
+      }
+      if (spreads.records.length !== 0) {
+        fail(
+          "snapshot.observations.spreads.records",
+          "missing status must hold zero records, got " + spreads.records.length
+        );
+      }
+    }
+    spreads.records.forEach((record: unknown, i: number) => {
+      const path = "snapshot.observations.spreads.records[" + i + "]";
       if (!isRecord(record)) {
         fail(path, "spread record must be an object");
       }
       assertIsoDate(record.date, path + ".date");
+      if (typeof record.tenor !== "string" || !(ALLOWED_SPREAD_TENORS as ReadonlyArray<string>).includes(record.tenor)) {
+        fail(
+          path + ".tenor",
+          "tenor must be one of " + JSON.stringify(ALLOWED_SPREAD_TENORS) + ", got " + JSON.stringify(record.tenor)
+        );
+      }
       assertIsoDate(record.ca_date, path + ".ca_date");
       assertIsoDate(record.us_date, path + ".us_date");
       if (record.ca_date !== record.date || record.us_date !== record.date) {
@@ -335,6 +379,27 @@ export function validateSnapshot(doc: unknown, expectedAsof: string): SnapshotDo
       assertFiniteNumber(record.us_yield_percent, path + ".us_yield_percent");
       assertFiniteNumber(record.spread_bp, path + ".spread_bp");
     });
+    if (spreads.status === "ok") {
+      const tenors = (spreads.records as Array<unknown>).map((record) =>
+        isRecord(record) ? String(record.tenor ?? "") : ""
+      );
+      const unique = new Set(tenors);
+      const sortedUnique = [...unique].sort();
+      const expected = [...ALLOWED_SPREAD_TENORS].sort();
+      if (
+        tenors.length !== ALLOWED_SPREAD_TENORS.length ||
+        unique.size !== tenors.length ||
+        JSON.stringify(sortedUnique) !== JSON.stringify(expected)
+      ) {
+        fail(
+          "snapshot.observations.spreads.records",
+          "ok envelope tenor set must be exactly " +
+            JSON.stringify(ALLOWED_SPREAD_TENORS) +
+            " with no duplicates, got " +
+            JSON.stringify(tenors)
+        );
+      }
+    }
   }
 
   const carry = observations.carry;

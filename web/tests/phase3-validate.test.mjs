@@ -274,8 +274,8 @@ describe("validators enforce collection caps", () => {
   it("rejects more than 2000 spread records", () => {
     assert.equal(MAX_SPREAD_RECORDS, 2000);
     const doc = goodSnapshot();
-    const row = doc.observations.spreads[0];
-    doc.observations.spreads = Array.from({ length: 2001 }, () => clone(row));
+    const row = doc.observations.spreads.records[0];
+    doc.observations.spreads.records = Array.from({ length: 2001 }, () => clone(row));
     assert.throws(() => validateSnapshot(doc, MOCK_DATE), /record cap/);
   });
 
@@ -336,6 +336,21 @@ describe("validators enforce collection caps", () => {
     }
     doc.observations.deep = deep;
     assert.throws(() => validateSnapshot(doc, MOCK_DATE), /nesting cap/);
+  });
+});
+
+describe("spreads ok envelope tenor set", () => {
+  it("rejects an ok envelope with a 3 tenor subset", () => {
+    const doc = goodSnapshot();
+    doc.observations.spreads.records = doc.observations.spreads.records.slice(0, 3);
+    assert.throws(() => validateSnapshot(doc, MOCK_DATE), /exactly.*with no duplicates/);
+  });
+
+  it("rejects an ok envelope with a duplicate tenor and no 30Y", () => {
+    const doc = goodSnapshot();
+    const rows = doc.observations.spreads.records;
+    doc.observations.spreads.records = [rows[0], clone(rows[0]), rows[1], rows[2]];
+    assert.throws(() => validateSnapshot(doc, MOCK_DATE), /with no duplicates/);
   });
 });
 

@@ -336,6 +336,7 @@ def build_live_observations(
             spread_records.append(
                 {
                     "date": record_date,
+                    "tenor": tenor,
                     "ca_date": record_date,
                     "us_date": record_date,
                     "ca_yield_percent": ca_yield,
@@ -344,8 +345,14 @@ def build_live_observations(
                 }
             )
         if spread_records:
-            spread_records.sort(key=lambda item: str(item["date"]))
-            observations["spreads"] = spread_records
+            spread_records.sort(
+                key=lambda item: (str(item["date"]), TENORS.index(str(item["tenor"])))
+            )
+            observations["spreads"] = {
+                "status": "ok",
+                "reason": None,
+                "records": spread_records,
+            }
         else:
             observations["spreads"] = {
                 "status": "missing",
