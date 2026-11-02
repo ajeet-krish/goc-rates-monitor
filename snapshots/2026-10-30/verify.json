@@ -1,5 +1,5 @@
 {
-  "checked_utc": "2026-11-02T19:11:36+00:00",
+  "checked_utc": "2026-11-02T22:15:14+00:00",
   "checks": [
     {
       "detail": "canonical JSON round trip succeeded",
@@ -77,7 +77,7 @@
       "passed": true
     },
     {
-      "detail": "spreads missing, FRED degraded without key (unit: bp)",
+      "detail": "spreads recompute worst 0.0000 bp within 1.0 bp on same dates (unit: bp)",
       "id": "V16",
       "passed": true
     },
@@ -87,7 +87,7 @@
       "passed": true
     },
     {
-      "detail": "backtest missing, FRED degraded without key (unit: bp)",
+      "detail": "backtest 2s10s_z252_meanrev_v1 with 536 obs, next day recompute diff 0.0000 bp (unit: bp)",
       "id": "V18",
       "passed": true
     },
@@ -130,7 +130,7 @@
   "failed_count": 0,
   "passed": true,
   "passed_count": 25,
-  "snapshot_sha256": "f6a63a9f6229142ec3686e3311c066e52e413f0fe99d25863e5d202ef023af0c",
+  "snapshot_sha256": "aaf5c13b155b276217329e347b3f0afc44b9a82fc89e0251524ee201acd397bf",
   "tolerance_bp": 1.0,
   "tolerance_unit": "basis_points"
 }
