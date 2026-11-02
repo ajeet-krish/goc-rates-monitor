@@ -393,10 +393,10 @@ def build_live_observations(
 
     analytic_instruments: list[Instrument] = []
     for label in TENORS:
-        quantity = observed_yields.get(label)
-        if not isinstance(quantity, dict):
+        yield_entry = observed_yields.get(label)
+        if not isinstance(yield_entry, dict):
             raise ValueError(f"observed yield for {label} is missing")
-        raw_value = quantity.get("value")
+        raw_value = yield_entry.get("value")
         if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
             raise ValueError(f"observed yield for {label} must be numeric")
         analytic_instruments.append(

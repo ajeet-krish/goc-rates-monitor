@@ -310,13 +310,13 @@ def build_cpi_rows(
     for component_id, raw_rows in monthly_indexes.items():
         if not isinstance(component_id, str) or not component_id.strip():
             raise ValueError("component ids must be non empty strings")
-        rows = list(raw_rows)
-        if len(rows) < 2:
+        source_rows = list(raw_rows)
+        if len(source_rows) < 2:
             raise ValueError(f"component {component_id!r} needs monthly history")
-        if len(rows) > MAX_CPI_MONTHS:
+        if len(source_rows) > MAX_CPI_MONTHS:
             raise ValueError(f"component {component_id!r} exceeds the {MAX_CPI_MONTHS} month cap")
         cleaned: list[tuple[str, float]] = []
-        for month, index in rows:
+        for month, index in source_rows:
             month_text = _check_month(month, f"month for {component_id!r}")
             if isinstance(index, bool) or not isinstance(index, (int, float)):
                 raise ValueError(f"index for {component_id!r} must be numeric")

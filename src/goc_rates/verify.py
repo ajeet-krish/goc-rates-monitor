@@ -459,11 +459,6 @@ def _backtest_section(snapshot: dict[str, Any]) -> Any:
     return _get_path(snapshot, "observations", "backtest")
 
 
-def _backtest_section(snapshot: dict[str, Any]) -> Any:
-    """Return the backtest section dict or None."""
-    return _get_path(snapshot, "observations", "backtest")
-
-
 def _curve_method(curve_section: Any) -> str | None:
     """Return the curve method string when present, else None."""
     if not isinstance(curve_section, dict):
