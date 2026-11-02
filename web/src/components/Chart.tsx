@@ -12,6 +12,10 @@ interface Props {
   xLabel: string;
   yLabel: string;
   series: { label: string; points: ChartPoint[]; color: string; dash?: number[]; width?: number }[];
+  /** Number uses raw values, date treats x as epoch seconds and ticks YYYY-MM-DD. */
+  xKind?: "number" | "date";
+  /** Charts sharing a key sync crosshairs. One key per page, never across pages. */
+  syncKey?: string;
 }
 
 interface BuiltData {
@@ -39,11 +43,39 @@ function toData(series: Props["series"]): BuiltData {
   return { xs: sortedX, data: [sortedX, ...aligned] as uPlot.AlignedData };
 }
 
+/** Tick formatter for epoch second axes. Guards NaN so gaps never print Invalid Date. */
+export function formatDateTick(epochSec: number): string {
+  if (!Number.isFinite(epochSec)) return "";
+  const date = new Date(epochSec * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
 export default function Chart(props: Props) {
   let host: HTMLDivElement | undefined;
   let plot: uPlot | null = null;
   let seriesCount = -1;
   let raf = 0;
+
+  const xKind = (): "number" | "date" => props.xKind ?? "number";
+
+  /**
+   * Presentation signature: every option baked into uPlot construction
+   * (labels, colors, dash, width, axis kind, sync key, axis titles).
+   * Data alone flows through setData, but a signature change rebuilds
+   * the plot so stale labels, colors, dash, xKind, or sync keys never
+   * linger when the series count is unchanged.
+   */
+  const signature = (): string =>
+    JSON.stringify({
+      title: props.title,
+      xLabel: props.xLabel,
+      yLabel: props.yLabel,
+      xKind: xKind(),
+      syncKey: props.syncKey ?? null,
+      series: props.series.map((s) => [s.label, s.color, s.dash ?? null, s.width ?? 2]),
+    });
+  let lastSignature = "";
 
   const excessive = (): boolean => {
     if (props.series.length > MAX_CHART_SERIES) return true;
@@ -69,14 +101,25 @@ export default function Chart(props: Props) {
     const width = measure();
     if (width <= 0) return;
     seriesCount = props.series.length;
+    lastSignature = signature();
+    const kind = xKind();
     plot = new uPlot(
       {
         width,
         height: 300,
         legend: { show: true },
-        cursor: { show: true },
+        cursor: props.syncKey
+          ? { show: true, sync: { key: props.syncKey, setSeries: true } }
+          : { show: true },
+        scales: kind === "date" ? { x: { time: true } } : undefined,
         axes: [
-          { label: props.xLabel, values: (_u, vals) => vals.map((v) => String(v)) },
+          {
+            label: props.xLabel,
+            values:
+              kind === "date"
+                ? (_u, vals) => vals.map((v) => formatDateTick(v))
+                : (_u, vals) => vals.map((v) => String(v)),
+          },
           { label: props.yLabel },
         ],
         series: [
@@ -107,6 +150,7 @@ export default function Chart(props: Props) {
     }
     if (host) host.innerHTML = "";
     seriesCount = -1;
+    lastSignature = "";
   };
 
   const resize = () => {
@@ -137,8 +181,9 @@ export default function Chart(props: Props) {
 
   createEffect(() => {
     const series = props.series;
+    const sig = signature();
     if (!plot || !host) return;
-    if (series.length !== seriesCount) {
+    if (series.length !== seriesCount || sig !== lastSignature) {
       build();
       return;
     }

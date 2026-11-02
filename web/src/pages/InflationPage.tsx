@@ -1,8 +1,10 @@
 import { For, Show } from "solid-js";
 import Chart from "../components/Chart";
+import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
 import type { HistoryDoc, SnapshotDoc } from "../lib/types";
-import { historyRangeLabel, splitCpi } from "../lib/history-series";
+import { historyRangeLabel } from "../lib/history-series";
+import { splitCpiSeries } from "../lib/history";
 
 interface Props {
   snapshot: SnapshotDoc | null;
@@ -13,21 +15,15 @@ interface Props {
   historyError?: string | null;
 }
 
-function topContributors(snapshot: SnapshotDoc) {
-  const rows = snapshot.observations.inflation?.contributions ?? [];
-  return [...rows]
-    .sort((a, b) => Math.abs(b.contribution_pp) - Math.abs(a.contribution_pp))
-    .slice(0, 8);
-}
-
 export default function InflationPage(props: Props) {
   const inflation = () => props.snapshot?.observations.inflation ?? null;
   const vintage = () => inflation()?.weight_vintage ?? null;
   const validation = () => inflation()?.validation ?? null;
   const bulkEntries = () => Object.entries(inflation()?.bulk ?? {});
   const flagState = () => (validation()?.exceeds_gate ? "fail" : "pass");
-  const trimHistory = () => splitCpi(props.history, (_m, _i, row) => row.trim_mom_percent);
-  const medianHistory = () => splitCpi(props.history, (_m, _i, row) => row.median_mom_percent);
+  const contributions = () => inflation()?.contributions ?? [];
+  const trimHistory = () => splitCpiSeries(props.history, (row) => row.trim_mom_percent);
+  const medianHistory = () => splitCpiSeries(props.history, (row) => row.median_mom_percent);
   return (
     <section aria-label="Inflation">
       <p class="hero-kicker">Inflation: experimental trim and median</p>
@@ -60,36 +56,36 @@ export default function InflationPage(props: Props) {
           </div>
           <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Decomposition (percentage points)</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Component</th>
-                  <th>Rate (pct per month)</th>
-                  <th>Weight (pct)</th>
-                  <th>Contribution (pp)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={props.snapshot ? topContributors(props.snapshot) : []}>
-                  {(row) => (
-                    <tr>
-                      <td>{row.component_id}</td>
-                      <td>{row.monthly_rate_percent.toFixed(3)}</td>
-                      <td>{row.weight_percent.toFixed(2)}</td>
-                      <td>{row.contribution_pp.toFixed(3)}</td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
             <p class="figure-caption">
-              Top 8 of {inflation()?.component_count} by absolute contribution.
-              Total {inflation()?.total_contribution_pp.toFixed(3)} pp, headline{" "}
-              {inflation()?.headline_mom.value} percent per month, kept weight{" "}
-              {inflation()?.kept_weight_fraction.toFixed(2)}, excluded{" "}
+              All {inflation()?.component_count} components live behind the
+              expansion below, sortable by rate, weight, or contribution with
+              nulls last. Total {inflation()?.total_contribution_pp.toFixed(3)} pp,
+              headline {inflation()?.headline_mom.value} percent per month, kept
+              weight {inflation()?.kept_weight_fraction.toFixed(2)}, excluded{" "}
               {inflation()?.excluded_weight_fraction.toFixed(2)}. Each row
               recomputes as weight times rate over 100 within 0.01 pp.
             </p>
+            <details class="expander">
+              <summary>
+                View full {inflation()?.component_count} component table
+              </summary>
+              <DataTable
+                caption="All CPI contributions with rates in percent per month, weights in percent, and contributions in percentage points"
+                exportFilename="inflation-contributions.csv"
+                columns={[
+                  { key: "component", header: "Component", kind: "string" },
+                  { key: "rate", header: "Rate", unit: "percent_per_month", kind: "number" },
+                  { key: "weight", header: "Weight", unit: "percent", kind: "number" },
+                  { key: "contrib", header: "Contribution", unit: "percentage_points", kind: "number" },
+                ]}
+                rows={contributions().map((row) => ({
+                  component: row.component_id,
+                  rate: row.monthly_rate_percent.toFixed(3),
+                  weight: row.weight_percent.toFixed(2),
+                  contrib: row.contribution_pp.toFixed(3),
+                }))}
+              />
+            </details>
           </div>
           <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Tax window flag (2024-12 to 2026-03)</h2>
@@ -163,8 +159,10 @@ export default function InflationPage(props: Props) {
             <Show when={!props.historyError && (props.history?.cpi.length ?? 0) > 0}>
               <Chart
                 title="Core inflation history"
-                xLabel="Month order"
+                xLabel="Month (UTC)"
                 yLabel="Rate (percent_per_month)"
+                xKind="date"
+                syncKey="inflation"
                 series={[
                   { label: "Trim verified", color: "#2e7f79", points: trimHistory().verified },
                   {

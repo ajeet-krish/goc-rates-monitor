@@ -4,7 +4,8 @@ import FooterStamp from "./components/FooterStamp";
 import StalenessBanner from "./components/StalenessBanner";
 import { DeskProvider, useDesk } from "./lib/desk";
 import { fetchHistory, fetchIndex, fetchSnapshot, fetchVerify, useMock } from "./lib/snapshot";
-import { latestN, readAsofState, resolveAsof } from "./lib/asof";
+import { canonicalSearch, isStrictIsoDate, latestN, readAsofState, resolveAsof } from "./lib/asof";
+import { stepDate } from "./lib/history";
 import { validateIndex, validateSnapshot, validateVerify } from "./lib/validate";
 import type { DataIndex, SnapshotDoc, VerifyReport } from "./lib/types";
 import type { ParentProps } from "solid-js";
@@ -49,21 +50,61 @@ function DatePicker(props: {
   dates: string[];
   current: string | null;
   unknownDate: string | null;
+  compare: string | null;
+  unknownCompare: string | null;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
   let textRef: HTMLInputElement | undefined;
   const recent = () => latestN(props.dates, 90);
+  const search = (asof: string | null, compare: string | null): string =>
+    canonicalSearch(location.pathname, asof, compare);
   const go = (asof: string) => {
-    navigate(location.pathname + "?asof=" + encodeURIComponent(asof));
+    navigate(search(asof, props.compare));
+  };
+  const goCompare = (compare: string | null) => {
+    navigate(search(props.current, compare));
   };
   const jump = () => {
     const raw = textRef?.value.trim() ?? "";
     if (!raw) return;
     go(raw);
   };
+  const prev = () => {
+    const target = stepDate(props.dates, props.current, -1);
+    if (target) go(target);
+  };
+  const next = () => {
+    const target = stepDate(props.dates, props.current, 1);
+    if (target) go(target);
+  };
+  const hasPrev = () => stepDate(props.dates, props.current, -1) !== null;
+  const hasNext = () => stepDate(props.dates, props.current, 1) !== null;
+  const onToolbarKeys = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      (target !== null && target.isContentEditable)
+    ) {
+      return;
+    }
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      prev();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      next();
+    }
+  };
   return (
-    <div class="toolbar" role="group" aria-label="Snapshot date picker">
+    <div
+      class="toolbar"
+      role="group"
+      aria-label="Snapshot date picker with compare overlay and step controls"
+      onKeyDown={onToolbarKeys}
+    >
       <div class="field">
         <label for="asof-select">Snapshot date</label>
         <select
@@ -80,6 +121,39 @@ function DatePicker(props: {
         </select>
       </div>
       <div class="field">
+        <label for="compare-select">Compare date</label>
+        <select
+          id="compare-select"
+          value={props.compare ?? ""}
+          onChange={(e) => goCompare(e.currentTarget.value || null)}
+        >
+          <option value="">No compare</option>
+          {recent().map((d) => (
+            <option value={d} selected={d === props.compare}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button
+        class="btn btn-secondary"
+        type="button"
+        aria-label="Previous snapshot date"
+        disabled={!hasPrev()}
+        onClick={prev}
+      >
+        Prev
+      </button>
+      <button
+        class="btn btn-secondary"
+        type="button"
+        aria-label="Next snapshot date"
+        disabled={!hasNext()}
+        onClick={next}
+      >
+        Next
+      </button>
+      <div class="field">
         <label for="asof-text">Jump to date (YYYY-MM-DD)</label>
         <input id="asof-text" ref={textRef} type="text" placeholder="2026-10-30" inputmode="numeric" />
       </div>
@@ -89,6 +163,11 @@ function DatePicker(props: {
       {props.unknownDate && (
         <span class="badge" data-state="warn">
           unknown date {props.unknownDate}
+        </span>
+      )}
+      {props.unknownCompare && (
+        <span class="badge" data-state="warn">
+          unknown compare {props.unknownCompare}
         </span>
       )}
     </div>
@@ -129,6 +208,10 @@ function CurveRoute() {
         history={d.history() ?? null}
         historyLoading={d.historyLoading()}
         historyError={d.historyError()}
+        compare={d.compare()}
+        compareSnapshot={d.compareSnapshot() ?? null}
+        compareLoading={d.compareLoading()}
+        compareError={d.compareError()}
       />
     </Show>
   );
@@ -236,17 +319,38 @@ function Layout(props: ParentProps) {
     if (useMock()) return null;
     return fetchHistory();
   });
+  const compareResolved = createMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("compare")?.trim() ?? "";
+    if (!raw) return { compare: null as string | null, unknownCompare: null as string | null };
+    if (!isStrictIsoDate(raw)) return { compare: null, unknownCompare: raw };
+    const idx = index();
+    if (!idx || !idx.dates.includes(raw)) {
+      return { compare: null, unknownCompare: raw };
+    }
+    return { compare: raw, unknownCompare: null as string | null };
+  });
+  const [compareSnapshot] = createResource(compareResolved, async (r) => {
+    if (!r.compare) return null;
+    if (useMock()) return loadMockSnapshot(r.compare);
+    return fetchSnapshot(r.compare);
+  });
   createEffect(() => {
     const r = resolved();
     const req = request();
     if (r.asof && req.requested === null && req.invalid === null && readAsofState(location.search).requested !== r.asof) {
-      navigate(location.pathname + "?asof=" + encodeURIComponent(r.asof), { replace: true });
+      const params = new URLSearchParams(location.search);
+      const rawCompare = params.get("compare")?.trim() ?? "";
+      navigate(canonicalSearch(location.pathname, r.asof, rawCompare || null), { replace: true });
     }
   });
   const indexError = createMemo(() => (index.error ? errText(index.error) : null));
   const snapError = createMemo(() => (snapshot.error ? errText(snapshot.error) : null));
   const verifyError = createMemo(() => (verify.error ? errText(verify.error) : null));
   const historyError = createMemo(() => (history.error ? errText(history.error) : null));
+  const compareError = createMemo(() =>
+    compareSnapshot.error ? errText(compareSnapshot.error) : null
+  );
   const blocked = createMemo(() => {
     if (index.error) return true;
     if (!resolved().asof) return true;
@@ -282,6 +386,11 @@ function Layout(props: ParentProps) {
     indexError,
     asof: () => resolved().asof,
     unknownDate: () => resolved().unknownDate,
+    compare: () => compareResolved().compare,
+    unknownCompare: () => compareResolved().unknownCompare,
+    compareSnapshot: () => compareSnapshot() ?? null,
+    compareLoading: () => compareSnapshot.loading,
+    compareError,
     snapshot: () => snapshot() ?? null,
     snapLoading: () => snapshot.loading,
     snapError,
@@ -348,6 +457,8 @@ function Layout(props: ParentProps) {
           dates={index()?.dates ?? []}
           current={resolved().asof}
           unknownDate={resolved().unknownDate}
+          compare={compareResolved().compare}
+          unknownCompare={compareResolved().unknownCompare}
         />
         <Show when={blocked() && blockReason()}>
           <div class="alert" role="alert">

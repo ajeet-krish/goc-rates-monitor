@@ -340,6 +340,64 @@ select:focus-visible {
   max-width: 100%;
 }
 
+.table-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 10px 0;
+}
+
+.th-sort {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 10px 8px;
+  margin: -10px -8px;
+}
+
+.th-sort:focus-visible {
+  outline: 3px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.th-glyph {
+  display: inline-block;
+  width: 1em;
+  color: var(--teal-deep);
+}
+
+.expander {
+  border: 1px solid var(--rule);
+  padding: 10px 12px;
+  background: var(--paper-soft);
+}
+
+.expander summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.expander summary:focus-visible {
+  outline: 3px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.expander .table-wrap {
+  margin-top: 10px;
+}
+
 .kv-table {
   min-width: 100%;
 }

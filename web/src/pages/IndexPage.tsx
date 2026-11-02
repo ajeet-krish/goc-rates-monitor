@@ -56,11 +56,12 @@ export default function IndexPage(props: Props) {
           >
             <DataTable
               caption="Latest benchmark knot yields in percent yield with solved zeros and discounts as unitless ratios"
+              exportFilename="desk-knots.csv"
               columns={[
-                { key: "tenor", header: "Tenor" },
-                { key: "yield", header: "Input YTM", unit: "percent_yield" },
-                { key: "zero", header: "Zero", unit: "percent_yield" },
-                { key: "discount", header: "Discount", unit: "unitless_ratio" },
+                { key: "tenor", header: "Tenor", kind: "string" },
+                { key: "yield", header: "Input YTM", unit: "percent_yield", kind: "number" },
+                { key: "zero", header: "Zero", unit: "percent_yield", kind: "number" },
+                { key: "discount", header: "Discount", unit: "unitless_ratio", kind: "number" },
               ]}
               rows={knots().map((k) => {
                 const zero = props.snapshot?.observations.curve?.zero_yields[k.tenor]?.value;
@@ -145,6 +146,8 @@ export default function IndexPage(props: Props) {
             title="Bootstrapped zero curve"
             xLabel="Tenor (years)"
             yLabel="Yield (percent_yield)"
+            xKind="number"
+            syncKey="desk"
             series={[
               {
                 label: "Zero",

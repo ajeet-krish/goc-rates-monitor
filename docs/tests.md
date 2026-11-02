@@ -326,3 +326,26 @@ plus `npm test`, `npm run typecheck`, and `npm run build` in `web`.
 Coverage summary: 253 passed (pytest) plus 151 passed (web), 0 failed. Happy path covered (backfill full and degraded paths, history merge happy path publishes history.json plus index history entry). Edge cases covered (250 row minimum, 1250 daily cap, 60 CPI cap, backfill absent, tampered manifest). Error conditions covered (non ISO asof, Valet failure, config failure, digest mismatch, promoted row forgery with verified true, overlap conflict beyond 1.0 bp, failed verify never promotes, slope and YoY recompute rejects).
 
 Failure analysis: no product code defects found. One style note only: `uv run ruff format --check` flags `tests/test_backfill.py` for a line length reformat; suggested fix is `uv run ruff format tests/test_backfill.py` with no behavior change. Probes confirmed merge outputs directly (history.json 1250 daily with 1 verified at 2026-10-30, 60 CPI with 0 verified, index verify_passed true, YoY and slope recompute diff 0.0).
+
+## 2026-11-02 - Phase 7 step 7.5 interactivity: Test Report
+
+Phase 7 step 7.5 terminal interactivity suite in
+`web/tests/phase7-terminal.test.mjs` (34 tests across 6 suites).
+Run with `npm test`, `npm run typecheck`, and `npm run build` in `web`
+(`/Users/ajeet/Projects/goc-rates-monitor/web`).
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| npm test web (187 passed) | PASS | 29 suites, 0 fail; includes 34 new terminal tests |
+| DataTable sorting nulls last (7 tests) | PASS | Missing tokens, nulls last before the asc/desc flip, aria sort plus nulls last labels, number/date kinds with inference, asc/desc/clear cycle, 2000 row and 32 column caps, number/date columns on curve/funding/inflation pages |
+| CSV escaping plus headers (6 tests) | PASS | Plain passthrough, comma/quote/CR/LF quoting with doubled quotes, unit bearing headers, NA for missing cells, single trailing CRLF, per table export files plus empty fallback |
+| Overlay deltaBp plus stepDate (8 tests) | PASS | Signed bp conversion, null on missing or non finite legs, sorted stepping with end stops, no wrap on unknown or absent, tenor alignment with null legs, NA deltas with no compare, epoch axis order, overlay math plus never block caption |
+| Compare query validation (5 tests) | PASS | Strict ISO grammar rejects traversal, malformed asof kept distinct from absent, unknown falls back to latest named, ?compare= grammar plus index membership plus unknown badge, independent compare fetch with clear option |
+| Synced crosshairs prop (4 tests) | PASS | syncKey prop with uPlot setSeries sync, one key per page with no cross page leaks, four curve charts under one key with dashed compare, 16 series and 2000 point caps |
+| Full 55 row inflation table (4 tests) | PASS | 55 unique C01 to C55 components, weights sum 100 with 0.01 pp row recompute, mock passes full snapshot validation, sortable rate/weight/contrib table with nulls last plus export |
+| npm run typecheck | PASS | tsc noEmit clean |
+| npm run build | PASS | vite build clean plus build:data merge, all pages emitted |
+
+Coverage summary: 187 passed (web), 0 failed. Happy path covered (signed bp deltas, sorted date stepping, compare fetch, per page sync keys, 55 row mock validates). Edge cases covered (empty compare, single date steps, zero delta, CR versus LF quoting, unknown compare dates, one key per page). Error conditions covered (NaN and Infinity legs, unknown step positions, malformed and traversal dates, missing compare legs, empty export rows).
+
+Failure analysis: one interim test fault, in new test code only. The inflation expander probe expected a literal 55 caption, but the page renders the live `component_count`, so the assertion was repinned to the stable `component table` plus `component_count` markers. No product code defects found. One testability note for future agents: DataTable sort helpers (`compareCells`, `parseNumericCell`, `parseDateCell`) are module private, so sorting is pinned through source contracts plus the exported CSV, history, and asof units; exporting the comparator would allow direct behavioral sort tests.

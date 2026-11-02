@@ -6,6 +6,12 @@ export interface DeskState {
   indexError: () => string | null;
   asof: () => string | null;
   unknownDate: () => string | null;
+  /** Compare snapshot date from ?compare=, validated against the index. Null when absent. */
+  compare: () => string | null;
+  unknownCompare: () => string | null;
+  compareSnapshot: () => SnapshotDoc | null | undefined;
+  compareLoading: () => boolean;
+  compareError: () => string | null;
   snapshot: () => SnapshotDoc | null | undefined;
   snapLoading: () => boolean;
   snapError: () => string | null;

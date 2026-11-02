@@ -34,6 +34,23 @@ export function readAsofParam(search: string): string | null {
   return readAsofState(search).requested;
 }
 
+/**
+ * Build a ledger query string that always carries compare alongside
+ * asof. The DatePicker search builder and the canonical asof redirect
+ * share this helper, so normalizing a missing or malformed asof never
+ * drops a live compare overlay.
+ */
+export function canonicalSearch(
+  pathname: string,
+  asof: string | null,
+  compare: string | null
+): string {
+  let query = "";
+  if (asof) query += "?asof=" + encodeURIComponent(asof);
+  if (compare) query += (query ? "&" : "?") + "compare=" + encodeURIComponent(compare);
+  return pathname + query;
+}
+
 export function resolveAsof(
   requested: string | null,
   invalid: string | null,

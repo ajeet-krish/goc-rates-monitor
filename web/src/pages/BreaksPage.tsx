@@ -3,7 +3,8 @@ import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
 import type { HistoryDoc, SnapshotDoc } from "../lib/types";
-import { historyRangeLabel, splitHistory } from "../lib/history-series";
+import { historyRangeLabel } from "../lib/history-series";
+import { dateToEpochSec, splitSeries } from "../lib/history";
 import { fmtBp, fmtShortSha } from "../lib/format";
 
 interface Props {
@@ -35,9 +36,9 @@ export default function BreaksPage(props: Props) {
   const pts = () => {
     const b = backtest();
     if (!b || !Array.isArray(b.slopes_bp)) return [];
-    return b.slopes_bp.map((s, i) => ({ x: i, y: s }));
+    return b.slopes_bp.map((s, i) => ({ x: dateToEpochSec(b.dates[i] ?? ""), y: s }));
   };
-  const yield10Y = () => splitHistory(props.history, (_d, _i, row) => row.yields_percent["10Y"]);
+  const yield10Y = () => splitSeries(props.history, (row) => row.yields_percent["10Y"]);
   return (
     <section aria-label="Breaks">
       <p class="hero-kicker">Breaks: switches suppress, never splice</p>
@@ -149,13 +150,16 @@ export default function BreaksPage(props: Props) {
             </p>
             <Chart
               title="Backtest slopes"
-              xLabel="Observation index"
+              xLabel="Date (UTC)"
               yLabel="Slope (bp)"
+              xKind="date"
+              syncKey="breaks"
               series={[{ label: "2s10s", color: "#a44a2a", points: pts() }]}
             />
             <div style={{ margin: "16px 0" }}>
               <DataTable
                 caption="Backtest summary in bp"
+                exportFilename="breaks-backtest.csv"
                 columns={[
                   { key: "rule", header: "Rule" },
                   { key: "obs", header: "Obs" },
@@ -181,8 +185,10 @@ export default function BreaksPage(props: Props) {
             <Show when={!props.historyError && (props.history?.daily.length ?? 0) > 0}>
               <Chart
                 title="10Y yield history"
-                xLabel="History order"
+                xLabel="Date (UTC)"
                 yLabel="Yield (percent)"
+                xKind="date"
+                syncKey="breaks"
                 series={[
                   { label: "10Y verified", color: "#1d2f3a", points: yield10Y().verified },
                   {

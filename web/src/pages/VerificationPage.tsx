@@ -85,11 +85,12 @@ export default function VerificationPage(props: Props) {
         </For>
         <DataTable
           caption="Verification checks with family, state, and detail including units"
+          exportFilename="verification-checks.csv"
           columns={[
-            { key: "id", header: "Check" },
-            { key: "family", header: "Family" },
-            { key: "state", header: "State" },
-            { key: "detail", header: "Detail" },
+            { key: "id", header: "Check", kind: "string" },
+            { key: "family", header: "Family", kind: "string" },
+            { key: "state", header: "State", kind: "string" },
+            { key: "detail", header: "Detail", kind: "string" },
           ]}
           rows={(props.verify?.checks ?? []).map((c) => ({
             id: c.id,

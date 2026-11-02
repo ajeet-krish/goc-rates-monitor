@@ -13,8 +13,10 @@ async function readSource(relative) {
 describe("router and reload fallback wiring", () => {
   it("navigates with an encoded asof query on date change", async () => {
     const app = await readSource("src/App.tsx");
-    assert.match(app, /\?asof=/);
-    assert.match(app, /encodeURIComponent\(asof\)/);
+    const asof = await readSource("src/lib/asof.ts");
+    assert.match(asof, /\?asof=/);
+    assert.match(app, /canonicalSearch/);
+    assert.match(asof, /encodeURIComponent\(asof\)/);
     assert.match(app, /useNavigate/);
   });
 

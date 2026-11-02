@@ -4,7 +4,8 @@ import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
 import type { HistoryDoc, SnapshotDoc, SpreadTenor } from "../lib/types";
 import { ALLOWED_SPREAD_TENORS } from "../lib/validate";
-import { historyRangeLabel, splitHistory } from "../lib/history-series";
+import { historyRangeLabel } from "../lib/history-series";
+import { dateToEpochSec, splitSeries } from "../lib/history";
 import { fmtBp, fmtNum } from "../lib/format";
 
 interface Props {
@@ -39,9 +40,9 @@ export default function FundingPage(props: Props) {
       (tenor) => ({
         label: tenor + " spread",
         color: TENOR_COLORS[tenor] ?? "#2e7f79",
-        points: dates.map((date, i) => {
+        points: dates.map((date) => {
           const match = spreads().find((r) => r.date === date && r.tenor === tenor);
-          return { x: i, y: match ? match.spread_bp : null };
+          return { x: dateToEpochSec(date), y: match ? match.spread_bp : null };
         }),
       })
     );
@@ -54,7 +55,7 @@ export default function FundingPage(props: Props) {
   const carry = () => props.snapshot?.observations.carry;
   const risk = () => props.snapshot?.observations.risk;
   const spread10YHistory = () =>
-    splitHistory(props.history, (_d, _i, row) => row.spreads_bp["10Y"]);
+    splitSeries(props.history, (row) => row.spreads_bp["10Y"]);
   return (
     <section aria-label="Funding">
       <p class="hero-kicker">Funding: CORRA, spreads, carry, risk</p>
@@ -152,19 +153,22 @@ export default function FundingPage(props: Props) {
             <h2>CA-US spread by tenor, spread in bp</h2>
             <Chart
               title="Canada minus US spread by tenor"
-              xLabel="Date order"
+              xLabel="Date (UTC)"
               yLabel="Spread (bp)"
+              xKind="date"
+              syncKey="funding"
               series={spreadSeries()}
             />
           </div>
           <DataTable
             caption="CA-US spreads in bp on shared dates, by tenor"
+            exportFilename="funding-spreads.csv"
             columns={[
-              { key: "date", header: "Date" },
-              { key: "tenor", header: "Tenor" },
-              { key: "ca", header: "CA yield", unit: "percent_yield" },
-              { key: "us", header: "US yield", unit: "percent_yield" },
-              { key: "spread", header: "Spread", unit: "bp" },
+              { key: "date", header: "Date", kind: "date" },
+              { key: "tenor", header: "Tenor", kind: "string" },
+              { key: "ca", header: "CA yield", unit: "percent_yield", kind: "number" },
+              { key: "us", header: "US yield", unit: "percent_yield", kind: "number" },
+              { key: "spread", header: "Spread", unit: "bp", kind: "number" },
             ]}
             rows={spreadRows().map((r) => ({
               date: r.date,
@@ -185,8 +189,10 @@ export default function FundingPage(props: Props) {
           <Show when={!props.historyError && (props.history?.daily.length ?? 0) > 0}>
             <Chart
               title="10Y spread history"
-              xLabel="History order"
+              xLabel="Date (UTC)"
               yLabel="Spread (basis_points)"
+              xKind="date"
+              syncKey="funding"
               series={[
                 {
                   label: "10Y spread verified",
