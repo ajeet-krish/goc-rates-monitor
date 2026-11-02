@@ -1,6 +1,36 @@
 # GoC Test Results
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02
+
+## 2026-11-02 - Phase 6 V24 V25: Test Report
+
+Phase 6 true bootstrap fixture repin in `tests/test_verify.py`,
+`tests/test_breaks.py`, `tests/test_phase5_lows.py`, and
+`tests/test_live_snapshot.py` plus `web/tests/phase3-validate.test.mjs`,
+`web/tests/phase5-lows.test.mjs`, and `web/tests/phase5-polish.test.mjs`.
+Run with `uv run pytest` in `/Users/ajeet/Projects/goc-rates-monitor`,
+plus `npm test`, `npm run build`, and `npm run typecheck` in `web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (236 passed) | PASS | Full pipeline suite, 230 prior plus 6 repinned and new bootstrap pins |
+| test_verify passing snapshot passes V01 to V25 | PASS | Bootstrap curve with settlement, 4 instruments, 4 anchors, 25 checks |
+| test_verify bootstrap true method shape | PASS | Method true_bootstrap_semiannual_log_discount_v1, is_par_approx false, is_zero true, V24 V25 pass |
+| test_verify V13 discount drift fails | PASS | Knot discount plus 0.01 fails V13 stored worst |
+| test_breaks V23 plus V24 V25 pass | PASS | Bootstrap method flags, settlement, instruments, anchors pinned |
+| test_phase5_lows 25 checks plus bootstrap shape | PASS | 25 checks ending V25, V24 V25 pass |
+| test_live full and degraded pass V01 to V25 | PASS | Live bootstrap snapshots already passed, counts updated 23 to 25 |
+| uv run ruff check src tests | PASS | All checks passed |
+| uv run ruff format src tests | PASS | Two files reformatted, remainder unchanged |
+| npm test web (132 passed) | PASS | 20 suites, 0 fail |
+| web pins 25 checks ending at V25 | PASS | EXPECTED_VERIFY_IDS length 25, V01 to V25, 24 check reject |
+| web pins bootstrap method id | PASS | Curve method true_bootstrap_semiannual_log_discount_v1, five families ending V24 to V25 |
+| npm run typecheck | PASS | tsc noEmit clean |
+| npm run build | PASS | vite build clean, all pages emitted |
+
+Coverage summary: 236 passed (pytest) plus 132 passed (web), 0 failed. Happy path covered (bootstrap passing fixtures pass V01 to V25, live full and degraded paths pass V24 V25, mock 25 check report validates). Edge cases covered (4 instrument and anchor agreement, settlement dating, residual ACT over 365 tenors, 24 check truncation). Error conditions covered (V13 discount drift, V23 gate and digest tampers, verify count and id mismatches, provenance vintage and sha drift).
+
+Failure analysis: seven interim failures before the repin, all in stale test expectations, no product defects found. Python fixtures still built the legacy par approx curve so V13, V17, V24, and V25 failed closed on the true bootstrap contract; live bootstrap snapshots already passed V01 to V25. Web validators already expected 25 checks and the bootstrap method, so the three stale test files failed on 23 and V23 and par_approx pins. Fixed by rebuilding fixtures with build_bootstrap_curve_section plus carry and risk from solved zeros and 5Y cashflows, updating counts to 25 and V25, method to true_bootstrap_semiannual_log_discount_v1, is_par_approx false, is_zero true, settlement_date, instruments plus anchors, and families to five ending V24 to V25.
 
 ## 2026-11-01 - Phase 5 lows: Test Report
 

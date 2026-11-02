@@ -1,6 +1,6 @@
 # goc-rates-monitor Decision Records
 
-Last updated: 2026-11-02 (Phase 5)
+Last updated: 2026-11-02 (Phase 6)
 
 ## D01: uv for Python management
 
@@ -252,3 +252,84 @@ web layer and never enters the pipeline snapshots or verification.
 Rationale: pipeline fixtures must stay pinned to bench evidence, and
 demo moves belong behind an explicit frontend flag. Consequences: no
 synthetic yields appear in `snapshots` or `verify.json`.
+
+## D31: Spreads envelope with complete tenor set
+
+Spreads use a typed envelope with status, reason, and records, and the ok
+path requires the complete 2Y, 5Y, 10Y, and 30Y set with no duplicates and
+no positional reads. Rationale: a partial list can pass vacuously while
+hiding a missing tenor, and positional reads misalign tenors after a feed
+change. Consequences: V16 fails legacy arrays closed, requires explicit
+ca_date and us_date equal to the record date, and checks the full set on
+every ok envelope.
+
+## D32: Benchmark map issues source
+
+Benchmark issues live in `config/benchmark_map.yaml` at schema version 2,
+with one maturity date, coupon percent, and semiannual frequency per tenor
+sourced from the bench CDN evidence carried by the switch feed incoming
+legs. Rationale: the bootstrap needs issue level cashflows, and the bench
+PDF plus the pinned switch feed are the evidence for the currently
+benchmark issues. Consequences: the loader rejects drift, V24 agrees each
+instrument maturity and coupon with the latest incoming leg effective on or
+before settlement, and null incoming legs fail closed.
+
+## D33: Sequential bisection for discount anchors
+
+The bootstrap solves discount anchors sequentially in ascending maturity
+with bisection inside the price tolerance, holding earlier anchors fixed
+and interpolating log discounts between them. Rationale: each longer bond
+prices off all earlier anchors, so solving out of order would reuse an
+unsolved tail. Consequences: at most 200 bisection iterations run per
+anchor, the bracket spans near zero to the previous anchor, and any miss
+beyond 1.0 bp fails closed.
+
+## D34: Legacy dispatch for curve checks
+
+V13, V14, and V17 dispatch on the curve method, with the legacy par approx
+path kept for the old recompute and the true bootstrap path used when the
+method is `true_bootstrap_semiannual_log_discount_v1`. Rationale: history
+must keep verifying old snapshots while live output moves to the bootstrap.
+Consequences: V24 and V25 fail closed on a legacy curve with an explicit
+method message, and the bootstrap V13, V14, and V17 replace the legacy
+results before reporting.
+
+## D35: Backfill command builds pure history
+
+`src/goc_rates/history.py` builds joint daily rows plus CPI rows as pure
+functions with no I/O and no clock, sealed by `build_backfill_document`.
+Rationale: history must be reproducible from injected histories and an
+explicit asof, with row counts and canonical bytes bounded before any
+publish step. Consequences: daily rows join the four Canadian tenors on
+joint complete dates with slopes, spreads, switch flags, and gap flags,
+CPI rows compound trailing 12 month cores, and the document fails closed
+outside the daily, monthly, and byte caps.
+
+## D36: Merged file carries a verified flag
+
+Every backfill row carries verified false with null snapshot and input
+digests plus a recomputing row digest over the canonical subdocument.
+Rationale: merged rows are not yet tied to a published snapshot, so they
+must read as unverified until a later verification pass seals them.
+Consequences: `build_backfill_document` recomputes every row digest, and
+any digest drift fails the document before counts or bytes are checked.
+
+## D37: Partial legs join per field with no forward fill
+
+Spreads join each tenor US leg on the same date only, so a missing US
+print yields null for that tenor with a status of ok, partial, or missing.
+Rationale: forward filling hides holidays and T+1 lags, and one tenor gap
+must not blank the full row. Consequences: daily rows keep per tenor
+spreads with explicit units, the row status reflects how many legs are
+present, and calendar gaps stay visible beside switch flags.
+
+## D38: Bootstrap and backfill caps
+
+Bootstrap bounds use `MAX_CASHFLOWS_PER_INSTRUMENT` 130,
+`MAX_BOOTSTRAP_ANCHORS` 260, and `BOOTSTRAP_PRICE_TOLERANCE_BP` 1.0, and
+backfill bounds use daily rows 250 to 1250, CPI months 1 to 60, and a 5 MiB
+document cap. Rationale: one pinned bound set keeps solver loops, schedule
+lengths, and history payloads explicit and prevents upstream growth from
+exhausting memory. Consequences: cashflow generation, anchor solving, and
+document assembly fail closed beyond the caps, and verify checks caps
+before any recompute.

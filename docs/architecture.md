@@ -1,13 +1,14 @@
 # goc-rates-monitor Architecture
 
-Last updated: 2026-11-02 (Phase 5)
+Last updated: 2026-11-02 (Phase 6)
 
 ## Purpose
 
 Static rate dashboard plus Python pipeline. BoC Valet, FRED, and StatCan WDS
-feed one daily snapshot that GitHub Pages publishes as JSON. Phase 2 adds a
-par approx curve engine with slopes, carry, spreads, risk, and a fixed
-backtest illustration.
+feed one daily snapshot that GitHub Pages publishes as JSON. Phase 6 runs
+the true bootstrap live with issue level cashflows, so the curve reprices
+each benchmark bond from its quoted par yield and solves discount anchors
+sequentially with bisection.
 
 ## Pipeline
 
@@ -26,7 +27,9 @@ Package layout (`src/goc_rates`):
 | `clients/fred.py` | DGS fetch, key from env, missing key yields missing quality |
 | `clients/statcan.py` | WDS vectors fetch, SA values reused as published |
 | `snapshot.py` | Canonical JSON, atomic write, manifest sha256, raw retention |
-| `verify.py` | V01 to V18 checks at 1.0 bp tolerance, verify.json, exit code |
+| `verify.py` | V01 to V25 checks at 1.0 bp tolerance, verify.json, exit code |
+| `cashflows.py` | Semiannual schedules on ACT/365, accrued interest, dirty price from yield |
+| `bootstrap.py` | True bootstrap solver with sequential bisection on log discounts |
 | `curve.py` | Par approx curve on semiannual log discounts, bills, knots |
 | `analytics.py` | Slopes, butterfly, z, carry roll, CA-US spreads, joins |
 | `risk.py` | Par price, modified duration, DV01 per million, semiannual |
@@ -87,9 +90,10 @@ and history sizes, with strict ISO dates throughout.
 
 ## Config
 
-`config/benchmark_map.yaml` pins schema version 1, tenors 2Y, 5Y, 10Y, 30Y
-with Valet BD.CDN ids, FRED DGS comparators, and nullable legacy V codes.
-`statcan_indicators` starts empty for the Phase 1 skeleton.
+`config/benchmark_map.yaml` pins schema version 2, tenors 2Y, 5Y, 10Y, 30Y
+with Valet BD.CDN ids, FRED DGS comparators, nullable legacy V codes, and
+one pinned issue per tenor with maturity date, coupon percent, and
+payments per year 2. `statcan_indicators` starts empty for the Phase 1 skeleton.
 
 ## Scheduling
 
@@ -176,3 +180,57 @@ recomputed switch flags, recomputed gates, day over day deltas within
 null while comparable and gap keep numbers). Breaks caps live in
 `limits.py` (`MAX_SWITCH_EVENTS` 64, `MAX_DOD_RECORDS` 4,
 `MAX_SWITCH_FEED_BYTES` 65536).
+
+## Phase 6 true bootstrap
+
+`src/goc_rates/cashflows.py` builds semiannual schedules stepping back in
+six month increments from maturity with month end clamping, keeps only
+payments strictly after the settlement date, times each flow in
+`duration_years` on ACT/365, accrues interest from the previous coupon
+date, and prices dirty at the semiannual yield with a fractional exponent
+for the first period. `src/goc_rates/bootstrap.py` implements
+`true_bootstrap_semiannual_log_discount_v1`: each benchmark bond supplies
+a dirty price target from its quoted par yield, then the solver walks
+maturities in ascending order and bisects each discount anchor within
+`BOOTSTRAP_PRICE_TOLERANCE_BP` (1.0 bp) while holding earlier anchors
+fixed with log linear interpolation between them and a flat zero tail
+beyond the last anchor. Settlement equals the joint Valet print date, knot
+tenors are residual ACT/365 years in `duration_years`, and the section
+records method, `is_par_approx` false, `is_zero` true, knots, discounts,
+zero yields, four instrument rows with maturity, coupon, yield, cashflow
+count, dirty price in `price_units_per_100_face`, and reprice error in
+`bp`, plus four anchor rows with payment date, years, and discount, and a
+derived `derived:curve` source. Solved discounts and zero yields carry
+quality observed with provenance marking derivation.
+
+## Verification
+
+Twenty five checks (V01 to V25). V13 asserts the true bootstrap method,
+`is_par_approx` false, `is_zero` true, the 2Y 5Y 10Y 30Y tenor set, knot
+units, stored discount and zero mappings against a semiannual inversion
+within 1.0 bp, instrument dirty price units and stored reprice errors,
+and three way yield agreement across knots, instruments, and observed Valet
+prints. V14 checks discounts in (0, 1] with strictly increasing tenors and
+anchors and strictly decreasing discounts. V15 keeps the closed derived
+source grammar. V16 requires the typed spreads envelope with status,
+reason, and records, the complete four tenor set with no duplicates, and
+same date legs with no positional reads. V17 recomputes carry from stored
+10Y zero yields and risk from the 5Y cashflows priced off bootstrapped
+discounts. V18 keeps the 254 observation backtest gate with degraded
+missing support. V24 cross checks the four instruments mature after
+settlement, recomputes each schedule within the 130 cap, agrees each
+incoming maturity and coupon with the latest switch feed leg effective on
+or before settlement, and repeats the three way yield agreement. V25
+re-runs the sequential solver from stored yields, checks anchors, zero
+inversion, dirty repricing, and yield agreement, and confirms the first
+anchor interpolates without drift. Legacy par approx curves fail V24 and
+V25 closed with a method message. Bootstrap caps live in `limits.py`
+(`MAX_CASHFLOWS_PER_INSTRUMENT` 130, `MAX_BOOTSTRAP_ANCHORS` 260,
+`BOOTSTRAP_PRICE_TOLERANCE_BP` 1.0).
+
+## Regenerated snapshot
+
+The regenerated `snapshots/2026-10-30/snapshot.json` holds 16430 bytes with
+sha256 `f6a63a9f6229142ec3686e3311c066e52e413f0fe99d25863e5d202ef023af0c`.
+Verify reports 25 of 25 passed at 1.0 bp tolerance, with V13 worst 0.8884 bp
+and V25 worst 0.8884 bp.

@@ -41,7 +41,8 @@ Keep functions small and pure where practical.
 | Phase 3 | Site shell curve funding verification pages | Complete |
 | Phase 4 | CPI engine trim median validation | Complete |
 | Phase 5 | Inflation breaks verification methods polish | Complete |
-| Phase 6 | True bootstrap with benchmark map post launch | In Progress |
+| Phase 6 | True bootstrap with benchmark map post launch | Complete |
+| Phase 7 | History backfill plus terminal UI | In Progress |
 
 ## Deep Docs
 
