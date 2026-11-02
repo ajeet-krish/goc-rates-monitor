@@ -2,14 +2,18 @@ import { Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
-import type { SnapshotDoc } from "../lib/types";
+import type { HistoryDoc, SnapshotDoc } from "../lib/types";
 import { missingZeroTenors, zeroCurvePoints } from "../lib/curve-points";
+import { historyRangeLabel, splitHistory } from "../lib/history-series";
 import { fmtNum, fmtYieldPct } from "../lib/format";
 
 interface Props {
   snapshot: SnapshotDoc | null;
   loading: boolean;
   error: string | null;
+  history?: HistoryDoc | null;
+  historyLoading?: boolean;
+  historyError?: string | null;
 }
 
 export default function CurvePage(props: Props) {
@@ -23,6 +27,9 @@ export default function CurvePage(props: Props) {
   const missingZeros = () => missingZeroTenors(knots(), curve()?.zero_yields ?? {});
   const anchorDate = (row: { date?: string; payment_date?: string }) =>
     row.payment_date ?? row.date ?? "date missing";
+  const twoY = () => splitHistory(props.history, (_d, _i, row) => row.yields_percent["2Y"]);
+  const tenY = () => splitHistory(props.history, (_d, _i, row) => row.yields_percent["10Y"]);
+  const slope210 = () => splitHistory(props.history, (_d, _i, row) => row.slopes_bp["2Y_10Y"]);
   return (
     <section aria-label="Curve">
       <p class="hero-kicker">Curve: true zero curve, bootstrapped</p>
@@ -148,6 +155,73 @@ export default function CurvePage(props: Props) {
           {curve()?.long_proxy_note ?? "Long end note missing."} Method{" "}
           {curve()?.method ?? "unknown"}.
         </p>
+        <div class="chart-card" style={{ margin: "16px 0" }}>
+          <h2>History: 2Y and 10Y yields in percent</h2>
+          <Show when={props.historyError}>
+            <p class="figure-caption" role="status">
+              History unavailable: {props.historyError}. Snapshot values above
+              stay authoritative. History never blocks the desk.
+            </p>
+          </Show>
+          <Show when={!props.historyError && (props.history?.daily.length ?? 0) > 0}>
+            <Chart
+              title="Benchmark yield history"
+              xLabel="History order"
+              yLabel="Yield (percent)"
+              series={[
+                { label: "2Y verified", color: "#2e7f79", points: twoY().verified },
+                {
+                  label: "2Y backfilled",
+                  color: "#9db8b5",
+                  dash: [6, 4],
+                  points: twoY().backfilled,
+                },
+                { label: "10Y verified", color: "#1d2f3a", points: tenY().verified },
+                {
+                  label: "10Y backfilled",
+                  color: "#a8b5bd",
+                  dash: [6, 4],
+                  points: tenY().backfilled,
+                },
+              ]}
+            />
+            <p class="figure-caption">
+              Range {historyRangeLabel(props.history)}. Backfilled spans are
+              unverified (source derived:backfill_v1) and render dashed and
+              muted. Verified spans carry snapshot digests (source
+              derived:history_verified_v1). History loads independently and
+              never blocks the desk.
+            </p>
+          </Show>
+          <Show when={!props.historyError && (props.history?.daily.length ?? 0) === 0}>
+            <p class="figure-caption" role="status">
+              {props.historyLoading ? "History is loading." : "History is empty for this build."}
+            </p>
+          </Show>
+        </div>
+        <div class="chart-card" style={{ margin: "16px 0" }}>
+          <h2>History: 2s10s slope in bp</h2>
+          <Show when={!props.historyError && (props.history?.daily.length ?? 0) > 0}>
+            <Chart
+              title="2s10s slope history"
+              xLabel="History order"
+              yLabel="Slope (basis_points)"
+              series={[
+                { label: "Slope verified", color: "#2e7f79", points: slope210().verified },
+                {
+                  label: "Slope backfilled",
+                  color: "#9db8b5",
+                  dash: [6, 4],
+                  points: slope210().backfilled,
+                },
+              ]}
+            />
+            <p class="figure-caption">
+              Slopes recompute as (10Y minus 2Y) times 100 within 1.0 bp.
+              Backfilled spans stay dashed and muted until a snapshot seals them.
+            </p>
+          </Show>
+        </div>
       </SectionState>
     </section>
   );

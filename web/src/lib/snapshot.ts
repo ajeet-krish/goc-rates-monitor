@@ -1,6 +1,6 @@
-import type { DataIndex, SnapshotDoc, VerifyReport } from "./types";
+import type { DataIndex, HistoryDoc, SnapshotDoc, VerifyReport } from "./types";
 import { isStrictIsoDate } from "./asof";
-import { validateIndex, validateSnapshot, validateVerify, ValidationError } from "./validate";
+import { validateHistory, validateIndex, validateSnapshot, validateVerify, ValidationError } from "./validate";
 
 function base(): string {
   return import.meta.env.BASE_URL || "/";
@@ -134,6 +134,11 @@ export async function fetchSnapshot(asof: string): Promise<SnapshotDoc> {
 export async function fetchVerify(asof: string, expectedDigest?: string): Promise<VerifyReport> {
   assertAsof(asof, "fetchVerify");
   return validateVerify(await fetchJson(dataUrl(asof + "/verify.json")), expectedDigest);
+}
+
+/** Fetch and runtime validate the merged history document. Failures throw. */
+export async function fetchHistory(): Promise<HistoryDoc> {
+  return validateHistory(await fetchJson(dataUrl("history.json")));
 }
 
 /**

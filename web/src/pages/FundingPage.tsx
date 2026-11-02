@@ -2,14 +2,18 @@ import { Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
-import type { SnapshotDoc, SpreadTenor } from "../lib/types";
+import type { HistoryDoc, SnapshotDoc, SpreadTenor } from "../lib/types";
 import { ALLOWED_SPREAD_TENORS } from "../lib/validate";
+import { historyRangeLabel, splitHistory } from "../lib/history-series";
 import { fmtBp, fmtNum } from "../lib/format";
 
 interface Props {
   snapshot: SnapshotDoc | null;
   loading: boolean;
   error: string | null;
+  history?: HistoryDoc | null;
+  historyLoading?: boolean;
+  historyError?: string | null;
 }
 
 const TENOR_ORDER: ReadonlyArray<SpreadTenor> = ALLOWED_SPREAD_TENORS;
@@ -49,6 +53,8 @@ export default function FundingPage(props: Props) {
     });
   const carry = () => props.snapshot?.observations.carry;
   const risk = () => props.snapshot?.observations.risk;
+  const spread10YHistory = () =>
+    splitHistory(props.history, (_d, _i, row) => row.spreads_bp["10Y"]);
   return (
     <section aria-label="Funding">
       <p class="hero-kicker">Funding: CORRA, spreads, carry, risk</p>
@@ -169,6 +175,40 @@ export default function FundingPage(props: Props) {
             }))}
           />
         </Show>
+        <div class="chart-card" style={{ margin: "16px 0" }}>
+          <h2>History: 10Y CA-US spread in bp</h2>
+          <Show when={props.historyError}>
+            <p class="figure-caption" role="status">
+              History unavailable: {props.historyError}. History never blocks the desk.
+            </p>
+          </Show>
+          <Show when={!props.historyError && (props.history?.daily.length ?? 0) > 0}>
+            <Chart
+              title="10Y spread history"
+              xLabel="History order"
+              yLabel="Spread (basis_points)"
+              series={[
+                {
+                  label: "10Y spread verified",
+                  color: "#3b5b8a",
+                  points: spread10YHistory().verified,
+                },
+                {
+                  label: "10Y spread backfilled",
+                  color: "#a8b5bd",
+                  dash: [6, 4],
+                  points: spread10YHistory().backfilled,
+                },
+              ]}
+            />
+            <p class="figure-caption">
+              Range {historyRangeLabel(props.history)}. Backfilled spans are
+              unverified (source derived:backfill_v1) and render dashed and
+              muted. Verified spans carry snapshot digests. Missing US legs stay
+              null with status missing or partial, never filled.
+            </p>
+          </Show>
+        </div>
       </SectionState>
     </section>
   );

@@ -90,10 +90,19 @@ def _row_digest(row: dict[str, Any]) -> str:
 
 
 def _check_month(text: str, name: str) -> str:
-    """Return a YYYY-MM month string, else raise."""
-    if not isinstance(text, str) or not _MONTH_PATTERN.match(text.strip()):
+    """Return a YYYY-MM month string, else raise (strict, no whitespace)."""
+    if not isinstance(text, str) or not _MONTH_PATTERN.match(text):
         raise ValueError(f"{name} must be YYYY-MM")
-    return text.strip()
+    return text
+
+
+def _next_month(month: str) -> str:
+    """Return the calendar month after a validated YYYY-MM month."""
+    year = int(month[0:4])
+    value = int(month[5:7])
+    if value == 12:
+        return f"{year + 1:04d}-01"
+    return f"{year:04d}-{value + 1:02d}"
 
 
 def _check_yield(value: float, name: str) -> float:
@@ -115,12 +124,13 @@ def _clean_history(raw: Mapping[str, float], tenor: str) -> dict[str, float]:
     if len(raw) > MAX_HISTORY_OBS:
         raise ValueError(f"history for {tenor} exceeds the {MAX_HISTORY_OBS} cap")
     cleaned: dict[str, float] = {}
+    # Note: Mapping keys are unique by definition, so a duplicate history
+    # date cannot survive dict construction upstream. Uniqueness within one
+    # tenor therefore holds here, and cross tenor joint logic intersects keys.
     for date_text, value in raw.items():
         if not isinstance(date_text, str):
             raise ValueError(f"history dates for {tenor} must be strict ISO strings")
         parse_strict_iso_date(date_text)
-        if date_text in cleaned:
-            raise ValueError(f"duplicate history date for {tenor}: {date_text!r}")
         cleaned[date_text] = _check_yield(value, f"yield for {tenor} on {date_text}")
     return cleaned
 
@@ -252,8 +262,8 @@ def build_cpi_rows(
 ) -> list[dict[str, Any]]:
     """Build monthly CPI backfill rows with trailing 12 month compounding.
 
-    Component indexes must share one ascending unique YYYY-MM sequence
-    with positive finite levels. Weights are fractions summing to one
+    Component indexes must share one ascending unique consecutive YYYY-MM
+    sequence with positive finite levels. Weights are fractions summing to one
     within 1e-6. Each month compounds the monthly trim and median with
     the shared trim median engine, and annual rates compound the
     trailing 12 monthly cores, leaving the first 11 months null for
@@ -262,7 +272,15 @@ def build_cpi_rows(
     """
     if not isinstance(vintage, WeightVintage):
         raise ValueError("vintage must be a WeightVintage")
+    if (
+        isinstance(vintage.expenditure_year, bool)
+        or not isinstance(vintage.expenditure_year, int)
+        or not 1000 <= vintage.expenditure_year <= 9999
+    ):
+        raise ValueError("vintage expenditure_year must be a 4 digit year")
     _check_month(vintage.link_month, "vintage link_month")
+    if not isinstance(vintage.provisional, bool):
+        raise ValueError("vintage provisional must be a bool")
     if not isinstance(monthly_indexes, Mapping) or not monthly_indexes:
         raise ValueError("monthly_indexes must be a non empty mapping")
     if len(monthly_indexes) > MAX_CPI_COMPONENTS:
@@ -322,6 +340,13 @@ def build_cpi_rows(
             raise ValueError("all components must share one month sequence")
         series[component_id] = cleaned
     assert shared_months is not None
+    for position in range(1, len(shared_months)):
+        if shared_months[position] != _next_month(shared_months[position - 1]):
+            raise ValueError(
+                "shared months must be consecutive calendar months, "
+                f"gap between {shared_months[position - 1]!r} "
+                f"and {shared_months[position]!r}"
+            )
     component_ids = sorted(series.keys())
     mom_months = shared_months[1:]
     if len(mom_months) > MAX_BACKFILL_CPI_MONTHS:
@@ -415,11 +440,13 @@ def build_backfill_document(
 
     Daily rows must count between the backfill minimum and maximum with
     ascending dates on or before asof and recomputing digests. CPI rows
-    must hold one to sixty ascending months on or before the asof month
-    with recomputing digests. Provenance must carry non empty source
-    url, retrieved, and vintage per entry. Exclusions must be a list.
-    The injected retrieved_utc stamps metadata with no clock read, and
-    the canonical document must fit within the backfill byte cap.
+    follow the degraded zero CPI contract: either an empty list meaning
+    degraded CPI with cpi_count zero and the same sealed shape, or one to
+    sixty ascending unique consecutive months on or before the asof month
+    with recomputing digests. Provenance must carry non empty source url, retrieved, and
+    vintage per entry. Exclusions must be a list. The injected
+    retrieved_utc stamps metadata with no clock read, and the canonical
+    document must fit within the backfill byte cap.
     """
     asof_day = _asof_day(asof)
     asof_text = asof_day.isoformat()
@@ -456,8 +483,6 @@ def build_backfill_document(
     if len(set(seen_dates)) != len(seen_dates):
         raise ValueError("daily rows must hold unique dates")
     cpi = list(cpi_rows)
-    if not cpi:
-        raise ValueError("cpi rows must be non empty")
     if len(cpi) > MAX_BACKFILL_CPI_MONTHS:
         raise ValueError(f"cpi row count {len(cpi)} exceeds the {MAX_BACKFILL_CPI_MONTHS} cap")
     asof_month = asof_text[:7]
@@ -477,6 +502,13 @@ def build_backfill_document(
         raise ValueError("cpi rows must be ascending")
     if len(set(seen_months)) != len(seen_months):
         raise ValueError("cpi rows must hold unique months")
+    for position in range(1, len(seen_months)):
+        if seen_months[position] != _next_month(seen_months[position - 1]):
+            raise ValueError(
+                "cpi rows must hold consecutive calendar months, "
+                f"gap between {seen_months[position - 1]!r} "
+                f"and {seen_months[position]!r}"
+            )
     document: dict[str, Any] = {
         "metadata": {
             "asof": asof_text,

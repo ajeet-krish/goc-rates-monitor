@@ -6,13 +6,14 @@ import {
   LIMIT_ROWS,
   METHOD_SECTIONS,
 } from "../lib/methods-content";
-import type { SnapshotDoc, VerifyReport } from "../lib/types";
+import type { HistoryDoc, SnapshotDoc, VerifyReport } from "../lib/types";
 
 interface Props {
   snapshot: SnapshotDoc | null;
   verify: VerifyReport | null;
   loading: boolean;
   error: string | null;
+  history?: HistoryDoc | null;
 }
 
 export default function MethodsPage(props: Props) {
@@ -64,6 +65,10 @@ export default function MethodsPage(props: Props) {
                 <td>Breaks</td>
                 <td class="num">{breaksMethod()}</td>
               </tr>
+              <tr>
+                <td>History</td>
+                <td class="num">{props.history?.metadata.method ?? "history_merge_v1"}</td>
+              </tr>
               <For each={CHECK_FAMILIES}>
                 {(family) => (
                   <tr>
@@ -76,6 +81,15 @@ export default function MethodsPage(props: Props) {
               </For>
             </tbody>
           </table>
+          <Show when={props.history}>
+            <p class="figure-caption">
+              History window: {props.history?.metadata.daily_count} daily rows
+              and {props.history?.metadata.cpi_count} CPI months, asof{" "}
+              {props.history?.metadata.asof}. CPI vintage is uniform (2024
+              expenditure, link 2025-05, provisional). Backfilled spans are
+              unverified and dashed, verified spans carry snapshot digests.
+            </p>
+          </Show>
         </SectionState>
         <p class="figure-caption">
           Twenty five checks at 1.0 basis point tolerance. Any failure blocks

@@ -1535,5 +1535,521 @@ export function validateIndex(doc: unknown): DataIndex {
       fail("index.entries." + date + ".bytes_utf8", "must be a positive integer");
     }
   }
+  const history = (doc as Record<string, unknown>).history;
+  if (history !== undefined) {
+    if (!isRecord(history)) {
+      fail("index.history", "history entry must be an object");
+    }
+    if (typeof history.sha256 !== "string" || !SHA256_HEX.test(history.sha256)) {
+      fail("index.history.sha256", "must be a 64 character lowercase hex digest");
+    }
+    for (const key of ["bytes_utf8", "daily_count", "cpi_count"]) {
+      const value = (history as Record<string, unknown>)[key];
+      if (typeof value !== "number" || !Number.isInteger(value) || (value as number) < 0) {
+        fail("index.history." + key, "must be a non negative integer");
+      }
+    }
+    if ((history.daily_count as number) > MAX_HISTORY_DAILY) {
+      fail("index.history.daily_count", "exceeds the daily history cap");
+    }
+    if ((history.cpi_count as number) > MAX_HISTORY_CPI) {
+      fail("index.history.cpi_count", "exceeds the CPI history cap");
+    }
+  }
   return doc as unknown as DataIndex;
+}
+
+/** History caps mirror the backfill bounds in src/goc_rates/limits.py. */
+export const MAX_HISTORY_DAILY = 1250;
+export const MAX_HISTORY_CPI = 60;
+export const MAX_HISTORY_BYTES = 5 * 1024 * 1024;
+export const HISTORY_METHOD = "history_merge_v1";
+export const HISTORY_SOURCES: ReadonlyArray<string> = [
+  "derived:backfill_v1",
+  "derived:history_verified_v1",
+];
+const HISTORY_TENORS: ReadonlyArray<string> = ["2Y", "5Y", "10Y", "30Y"];
+const HISTORY_SLOPES: ReadonlyArray<string> = ["2Y_5Y", "2Y_10Y", "5Y_30Y", "10Y_30Y"];
+const HISTORY_SPREAD_STATUS: ReadonlyArray<string> = ["ok", "partial", "missing"];
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function assertHistoryMonth(value: unknown, path: string): asserts value is string {
+  if (typeof value !== "string" || !MONTH_RE.test(value)) {
+    fail(path, "must be a YYYY-MM month: " + JSON.stringify(value));
+  }
+  if (value.slice(5) === "00" || value.slice(5) === "13") {
+    fail(path, "must be a YYYY-MM month: " + JSON.stringify(value));
+  }
+}
+
+function nextCalendarMonth(month: string): string {
+  const year = Number(month.slice(0, 4));
+  const mon = Number(month.slice(5, 7));
+  const nextYear = mon === 12 ? year + 1 : year;
+  const nextMon = mon === 12 ? 1 : mon + 1;
+  return nextYear + "-" + String(nextMon).padStart(2, "0");
+}
+
+/**
+ * Python compatible canonical JSON for row digests.
+ * Mirrors json.dumps with sort_keys True and indent 2, with float
+ * integers rendered as X.0 so JS output matches the Python sealer.
+ */
+function canonicalHistoryText(payload: unknown): string {
+  return canonicalHistoryValue(payload, 0) + "\n";
+}
+
+function canonicalHistoryNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    fail("history", "non finite number in canonical payload");
+  }
+  if (Number.isInteger(value)) {
+    return value.toFixed(1);
+  }
+  return JSON.stringify(value);
+}
+
+function canonicalHistoryValue(value: unknown, indent: number): string {
+  if (value === null) return "null";
+  if (typeof value === "number") return canonicalHistoryNumber(value as number);
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    const parts = (value as unknown[]).map(
+      (item) => " ".repeat(indent + 2) + canonicalHistoryValue(item, indent + 2)
+    );
+    return "[\n" + parts.join(",\n") + "\n" + " ".repeat(indent) + "]";
+  }
+  if (isRecord(value)) {
+    const keys = Object.keys(value).sort();
+    if (keys.length === 0) return "{}";
+    const parts = keys.map(
+      (key) =>
+        " ".repeat(indent + 2) +
+        JSON.stringify(key) +
+        ": " +
+        canonicalHistoryValue((value as Record<string, unknown>)[key], indent + 2)
+    );
+    return "{\n" + parts.join(",\n") + "\n" + " ".repeat(indent) + "}";
+  }
+  fail("history", "unsupported canonical value: " + typeof value);
+}
+
+type HashFn = (text: string) => string;
+
+/** Synchronous SHA-256 over UTF-8 text (compact implementation, no dependency). */
+function sha256HexText(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ];
+  let h0 = 0x6a09e667;
+  let h1 = 0xbb67ae85;
+  let h2 = 0x3c6ef372;
+  let h3 = 0xa54ff53a;
+  let h4 = 0x510e527f;
+  let h5 = 0x9b05688c;
+  let h6 = 0x1f83d9ab;
+  let h7 = 0x5be0cd19;
+  const bitLen = bytes.length * 8;
+  const withPad = bytes.length + 1 + 8;
+  const blocks = Math.ceil(withPad / 64);
+  const padded = new Uint8Array(blocks * 64);
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  const view = new DataView(padded.buffer);
+  const hi = Math.floor(bitLen / 0x100000000);
+  const lo = bitLen >>> 0;
+  view.setUint32(padded.length - 8, hi);
+  view.setUint32(padded.length - 4, lo);
+  const w = new Uint32Array(64);
+  const rotr = (x: number, n: number): number => (x >>> n) | (x << (32 - n));
+  for (let off = 0; off < padded.length; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+    }
+    let a = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    let f = h5;
+    let g = h6;
+    let h = h7;
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + K[i] + w[i]) | 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) | 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    h0 = (h0 + a) | 0;
+    h1 = (h1 + b) | 0;
+    h2 = (h2 + c) | 0;
+    h3 = (h3 + d) | 0;
+    h4 = (h4 + e) | 0;
+    h5 = (h5 + f) | 0;
+    h6 = (h6 + g) | 0;
+    h7 = (h7 + h) | 0;
+  }
+  const hex = (x: number): string => (x >>> 0).toString(16).padStart(8, "0");
+  return hex(h0) + hex(h1) + hex(h2) + hex(h3) + hex(h4) + hex(h5) + hex(h6) + hex(h7);
+}
+
+let hashImpl: HashFn = sha256HexText;
+
+/** Install the sha256 helper for row digest recompute (Node or browser). */
+export function setHistoryHashImpl(fn: HashFn): void {
+  hashImpl = fn;
+}
+
+export { canonicalHistoryText, sha256HexText };
+
+function requireHistoryHash(): HashFn {
+  if (!hashImpl) {
+    fail("history", "history digest helper is not installed, call setHistoryHashImpl first");
+  }
+  return hashImpl as HashFn;
+}
+
+function checkRowDigestSync(row: Record<string, unknown>, path: string): void {
+  const stored = row.row_digest;
+  if (typeof stored !== "string" || !SHA256_HEX.test(stored)) {
+    fail(path + ".row_digest", "must be a 64 character lowercase hex digest");
+  }
+  const body: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(row)) {
+    if (key === "row_digest") continue;
+    body[key] = val;
+  }
+  const expected = requireHistoryHash()(canonicalHistoryText(body));
+  if (expected !== stored) {
+    fail(path + ".row_digest", "row digest does not recompute from the canonical subdocument");
+  }
+}
+
+/** Validate the merged history document published as history.json. */
+export function validateHistory(doc: unknown): import("./types").HistoryDoc {
+  if (!isRecord(doc)) {
+    fail("history", "document must be an object");
+  }
+  const metadata = doc.metadata;
+  if (!isRecord(metadata)) {
+    fail("history.metadata", "metadata must be an object");
+  }
+  if (metadata.schema_version !== 1) {
+    fail("history.metadata.schema_version", "must pin schema version 1");
+  }
+  if (metadata.method !== HISTORY_METHOD) {
+    fail("history.metadata.method", "method must pin " + HISTORY_METHOD);
+  }
+  assertIsoDate(metadata.asof, "history.metadata.asof");
+  for (const key of ["daily_count", "cpi_count"] as const) {
+    const value = (metadata as Record<string, unknown>)[key];
+    if (typeof value !== "number" || !Number.isInteger(value) || (value as number) < 0) {
+      fail("history.metadata." + key, "must be a non negative integer");
+    }
+  }
+  if ((metadata.daily_count as number) > MAX_HISTORY_DAILY) {
+    fail("history.metadata.daily_count", "exceeds the " + MAX_HISTORY_DAILY + " daily cap");
+  }
+  if ((metadata.cpi_count as number) > MAX_HISTORY_CPI) {
+    fail("history.metadata.cpi_count", "exceeds the " + MAX_HISTORY_CPI + " CPI cap");
+  }
+  if (!Array.isArray(doc.daily)) {
+    fail("history.daily", "daily must be an array");
+  }
+  if (!Array.isArray(doc.cpi)) {
+    fail("history.cpi", "cpi must be an array");
+  }
+  if ((doc.daily as unknown[]).length !== (metadata.daily_count as number)) {
+    fail("history.daily", "daily length must match metadata daily_count");
+  }
+  if ((doc.cpi as unknown[]).length !== (metadata.cpi_count as number)) {
+    fail("history.cpi", "cpi length must match metadata cpi_count");
+  }
+  const dates: string[] = [];
+  (doc.daily as unknown[]).forEach((row: unknown, i: number) => {
+    const path = "history.daily[" + i + "]";
+    if (!isRecord(row)) {
+      fail(path, "daily row must be an object");
+    }
+    assertIsoDate(row.date, path + ".date");
+    dates.push(row.date as string);
+    const yields = row.yields_percent;
+    if (!isRecord(yields)) {
+      fail(path + ".yields_percent", "must be an object");
+    }
+    if (JSON.stringify(Object.keys(yields).sort()) !== JSON.stringify([...HISTORY_TENORS].sort())) {
+      fail(path + ".yields_percent", "must hold exactly " + JSON.stringify(HISTORY_TENORS));
+    }
+    for (const tenor of HISTORY_TENORS) {
+      assertFiniteNumber((yields as Record<string, unknown>)[tenor], path + ".yields_percent." + tenor);
+      const v = (yields as Record<string, number>)[tenor];
+      if (v < -20 || v > 30) {
+        fail(path + ".yields_percent." + tenor, "yield must be within [-20, 30] percent");
+      }
+    }
+    if (row.yields_unit !== "percent") {
+      fail(path + ".yields_unit", "yields unit must be percent");
+    }
+    const slopes = row.slopes_bp;
+    if (!isRecord(slopes)) {
+      fail(path + ".slopes_bp", "must be an object");
+    }
+    if (JSON.stringify(Object.keys(slopes).sort()) !== JSON.stringify([...HISTORY_SLOPES].sort())) {
+      fail(path + ".slopes_bp", "must hold exactly " + JSON.stringify(HISTORY_SLOPES));
+    }
+    const y = yields as Record<string, number>;
+    const slopePairs: Array<[string, string, string]> = [
+      ["2Y_5Y", "2Y", "5Y"],
+      ["2Y_10Y", "2Y", "10Y"],
+      ["5Y_30Y", "5Y", "30Y"],
+      ["10Y_30Y", "10Y", "30Y"],
+    ];
+    for (const [key, shortT, longT] of slopePairs) {
+      assertFiniteNumber((slopes as Record<string, unknown>)[key], path + ".slopes_bp." + key);
+      const stored = (slopes as Record<string, number>)[key];
+      const expected = (y[longT] - y[shortT]) * 100;
+      if (Math.abs(stored - expected) > 1.0 + 1e-9) {
+        fail(
+          path + ".slopes_bp." + key,
+          "slope must recompute as (long minus short) times 100 within 1.0 bp, expected " +
+            expected +
+            " got " +
+            stored
+        );
+      }
+    }
+    if (row.slopes_unit !== "basis_points") {
+      fail(path + ".slopes_unit", "slopes unit must be basis_points");
+    }
+    const spreads = row.spreads_bp;
+    if (!isRecord(spreads)) {
+      fail(path + ".spreads_bp", "must be an object");
+    }
+    if (JSON.stringify(Object.keys(spreads).sort()) !== JSON.stringify([...HISTORY_TENORS].sort())) {
+      fail(path + ".spreads_bp", "must hold exactly " + JSON.stringify(HISTORY_TENORS));
+    }
+    let present = 0;
+    for (const tenor of HISTORY_TENORS) {
+      const value = (spreads as Record<string, unknown>)[tenor];
+      if (value === null) continue;
+      assertFiniteNumber(value, path + ".spreads_bp." + tenor);
+      if (Math.abs(value as number) > 5000 + 1e-9) {
+        fail(path + ".spreads_bp." + tenor, "spread must be within 5000 bp");
+      }
+      present += 1;
+    }
+    if (row.spreads_unit !== "basis_points") {
+      fail(path + ".spreads_unit", "spreads unit must be basis_points");
+    }
+    if (typeof row.spreads_status !== "string" || !HISTORY_SPREAD_STATUS.includes(row.spreads_status)) {
+      fail(path + ".spreads_status", "must be one of " + JSON.stringify(HISTORY_SPREAD_STATUS));
+    }
+    const status = row.spreads_status as string;
+    if (status === "ok" && present !== 4) {
+      fail(path + ".spreads_status", "ok status needs four present spreads, got " + present);
+    }
+    if (status === "missing" && present !== 0) {
+      fail(path + ".spreads_status", "missing status needs zero present spreads, got " + present);
+    }
+    if (status === "partial" && (present === 0 || present === 4)) {
+      fail(path + ".spreads_status", "partial status needs one to three present spreads");
+    }
+    if (typeof row.switch_in_window !== "boolean" || typeof row.calendar_gap !== "boolean") {
+      fail(path, "switch_in_window and calendar_gap must be booleans");
+    }
+    const byTenor = row.switch_by_tenor;
+    if (!isRecord(byTenor)) {
+      fail(path + ".switch_by_tenor", "must be an object");
+    }
+    if (JSON.stringify(Object.keys(byTenor).sort()) !== JSON.stringify([...HISTORY_TENORS].sort())) {
+      fail(path + ".switch_by_tenor", "must hold exactly " + JSON.stringify(HISTORY_TENORS));
+    }
+    for (const tenor of HISTORY_TENORS) {
+      if (typeof (byTenor as Record<string, unknown>)[tenor] !== "boolean") {
+        fail(path + ".switch_by_tenor." + tenor, "must be a boolean");
+      }
+    }
+    const anySwitch = HISTORY_TENORS.some((t) => (byTenor as Record<string, boolean>)[t]);
+    if ((row.switch_in_window as boolean) !== anySwitch) {
+      fail(path + ".switch_in_window", "must equal the OR of switch_by_tenor");
+    }
+    if (typeof row.verified !== "boolean") {
+      fail(path + ".verified", "verified must be a boolean");
+    }
+    if (typeof row.source !== "string" || !HISTORY_SOURCES.includes(row.source)) {
+      fail(path + ".source", "source must be one of " + JSON.stringify(HISTORY_SOURCES));
+    }
+    if ((row.verified as boolean) && row.source !== "derived:history_verified_v1") {
+      fail(path + ".source", "verified rows must use derived:history_verified_v1");
+    }
+    if (!(row.verified as boolean) && row.source !== "derived:backfill_v1") {
+      fail(path + ".source", "unverified rows must use derived:backfill_v1");
+    }
+    const snap = row.snapshot_sha256;
+    if (row.verified) {
+      if (typeof snap !== "string" || !SHA256_HEX.test(snap)) {
+        fail(path + ".snapshot_sha256", "verified rows need a 64 character hex snapshot digest");
+      }
+    } else if (snap !== null) {
+      fail(path + ".snapshot_sha256", "unverified rows must carry a null snapshot_sha256");
+    }
+    if (row.input_digest_sha256 !== null && row.input_digest_sha256 !== undefined) {
+      fail(path + ".input_digest_sha256", "history rows must carry a null input digest");
+    }
+    checkRowDigestSync(row as Record<string, unknown>, path);
+  });
+  for (let i = 1; i < dates.length; i++) {
+    if (!(dates[i] > dates[i - 1])) {
+      fail("history.daily", "daily dates must be strictly increasing");
+    }
+  }
+  if (new Set(dates).size !== dates.length) {
+    fail("history.daily", "daily dates must be unique");
+  }
+  const months: string[] = [];
+  const trimMoms: number[] = [];
+  (doc.cpi as unknown[]).forEach((row: unknown, i: number) => {
+    const path = "history.cpi[" + i + "]";
+    if (!isRecord(row)) {
+      fail(path, "cpi row must be an object");
+    }
+    assertHistoryMonth(row.month, path + ".month");
+    months.push(row.month as string);
+    assertFiniteNumber(row.trim_mom_percent, path + ".trim_mom_percent");
+    assertFiniteNumber(row.median_mom_percent, path + ".median_mom_percent");
+    trimMoms.push(row.trim_mom_percent as number);
+    if (typeof row.median_component !== "string" || (row.median_component as string).length === 0) {
+      fail(path + ".median_component", "must be a non empty string");
+    }
+    const trimYoy = row.trim_yoy_percent;
+    const medianYoy = row.median_yoy_percent;
+    if (trimYoy !== null) assertFiniteNumber(trimYoy, path + ".trim_yoy_percent");
+    if (medianYoy !== null) assertFiniteNumber(medianYoy, path + ".median_yoy_percent");
+    if (row.mom_unit !== "percent_per_month") {
+      fail(path + ".mom_unit", "mom unit must be percent_per_month");
+    }
+    if (row.yoy_unit !== "percent") {
+      fail(path + ".yoy_unit", "yoy unit must be percent");
+    }
+    if (typeof row.verified !== "boolean") {
+      fail(path + ".verified", "verified must be a boolean");
+    }
+    if (typeof row.source !== "string" || !HISTORY_SOURCES.includes(row.source)) {
+      fail(path + ".source", "source must be one of " + JSON.stringify(HISTORY_SOURCES));
+    }
+    if ((row.verified as boolean) && row.source !== "derived:history_verified_v1") {
+      fail(path + ".source", "verified rows must use derived:history_verified_v1");
+    }
+    if (!(row.verified as boolean) && row.source !== "derived:backfill_v1") {
+      fail(path + ".source", "unverified rows must use derived:backfill_v1");
+    }
+    const cpiSnap = row.snapshot_sha256;
+    if (row.verified) {
+      if (typeof cpiSnap !== "string" || !SHA256_HEX.test(cpiSnap)) {
+        fail(path + ".snapshot_sha256", "verified rows need a 64 character hex snapshot digest");
+      }
+    } else if (cpiSnap !== null && cpiSnap !== undefined) {
+      fail(path + ".snapshot_sha256", "unverified rows must carry a null snapshot_sha256");
+    }
+    if (row.input_digest_sha256 !== null && row.input_digest_sha256 !== undefined) {
+      fail(path + ".input_digest_sha256", "history rows must carry a null input digest");
+    }
+    checkRowDigestSync(row as Record<string, unknown>, path);
+  });
+  for (let i = 1; i < months.length; i++) {
+    if (!(months[i] > months[i - 1])) {
+      fail("history.cpi", "cpi months must be strictly increasing");
+    }
+  }
+  if (new Set(months).size !== months.length) {
+    fail("history.cpi", "cpi months must be unique");
+  }
+  for (let i = 1; i < months.length; i++) {
+    if (months[i] !== nextCalendarMonth(months[i - 1])) {
+      fail(
+        "history.cpi",
+        "cpi months must be consecutive calendar months, gap between " +
+          months[i - 1] +
+          " and " +
+          months[i]
+      );
+    }
+  }
+  const compound = (series: number[]): number => {
+    let factor = 1;
+    for (const m of series) factor *= 1 + m / 100;
+    return (factor - 1) * 100;
+  };
+  const cpiRows = doc.cpi as Array<{
+    trim_mom_percent: number;
+    median_mom_percent: number;
+    trim_yoy_percent: number | null;
+    median_yoy_percent: number | null;
+  }>;
+  const medMoms = cpiRows.map((r) => r.median_mom_percent);
+  const trMoms = cpiRows.map((r) => r.trim_mom_percent);
+  cpiRows.forEach((row, i) => {
+    const path = "history.cpi[" + i + "]";
+    if (i < 11) {
+      if (row.trim_yoy_percent !== null || row.median_yoy_percent !== null) {
+        fail(path, "first 11 CPI months must carry null year over year");
+      }
+      return;
+    }
+    if (row.trim_yoy_percent === null || row.median_yoy_percent === null) {
+      fail(path, "CPI months at index 11 and later need numeric year over year");
+    }
+    for (let k = i - 11 + 1; k <= i; k++) {
+      if (months[k] !== nextCalendarMonth(months[k - 1])) {
+        fail(
+          path,
+          "CPI year over year needs 12 consecutive calendar months, gap between " +
+            months[k - 1] +
+            " and " +
+            months[k]
+        );
+      }
+    }
+    const expectedTrim = compound(trMoms.slice(i - 11, i + 1));
+    const expectedMedian = compound(medMoms.slice(i - 11, i + 1));
+    if (Math.abs((row.trim_yoy_percent as number) - expectedTrim) > 0.01 + 1e-9) {
+      fail(
+        path + ".trim_yoy_percent",
+        "must compound the trailing 12 moms within 0.01, expected " + expectedTrim
+      );
+    }
+    if (Math.abs((row.median_yoy_percent as number) - expectedMedian) > 0.01 + 1e-9) {
+      fail(
+        path + ".median_yoy_percent",
+        "must compound the trailing 12 moms within 0.01, expected " + expectedMedian
+      );
+    }
+  });
+  return doc as unknown as import("./types").HistoryDoc;
 }

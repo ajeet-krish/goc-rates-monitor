@@ -3,7 +3,7 @@ import { A, Route, Router, useLocation, useNavigate } from "@solidjs/router";
 import FooterStamp from "./components/FooterStamp";
 import StalenessBanner from "./components/StalenessBanner";
 import { DeskProvider, useDesk } from "./lib/desk";
-import { fetchIndex, fetchSnapshot, fetchVerify, useMock } from "./lib/snapshot";
+import { fetchHistory, fetchIndex, fetchSnapshot, fetchVerify, useMock } from "./lib/snapshot";
 import { latestN, readAsofState, resolveAsof } from "./lib/asof";
 import { validateIndex, validateSnapshot, validateVerify } from "./lib/validate";
 import type { DataIndex, SnapshotDoc, VerifyReport } from "./lib/types";
@@ -122,7 +122,14 @@ function CurveRoute() {
   const d = useDesk();
   return (
     <Show when={!d.blocked()} fallback={<BlockedNotice />}>
-      <CurvePage snapshot={d.snapshot() ?? null} loading={d.snapLoading()} error={d.snapError()} />
+      <CurvePage
+        snapshot={d.snapshot() ?? null}
+        loading={d.snapLoading()}
+        error={d.snapError()}
+        history={d.history() ?? null}
+        historyLoading={d.historyLoading()}
+        historyError={d.historyError()}
+      />
     </Show>
   );
 }
@@ -131,7 +138,14 @@ function FundingRoute() {
   const d = useDesk();
   return (
     <Show when={!d.blocked()} fallback={<BlockedNotice />}>
-      <FundingPage snapshot={d.snapshot() ?? null} loading={d.snapLoading()} error={d.snapError()} />
+      <FundingPage
+        snapshot={d.snapshot() ?? null}
+        loading={d.snapLoading()}
+        error={d.snapError()}
+        history={d.history() ?? null}
+        historyLoading={d.historyLoading()}
+        historyError={d.historyError()}
+      />
     </Show>
   );
 }
@@ -140,7 +154,14 @@ function InflationRoute() {
   const d = useDesk();
   return (
     <Show when={!d.blocked()} fallback={<BlockedNotice />}>
-      <InflationPage snapshot={d.snapshot() ?? null} loading={d.snapLoading()} error={d.snapError()} />
+      <InflationPage
+        snapshot={d.snapshot() ?? null}
+        loading={d.snapLoading()}
+        error={d.snapError()}
+        history={d.history() ?? null}
+        historyLoading={d.historyLoading()}
+        historyError={d.historyError()}
+      />
     </Show>
   );
 }
@@ -166,6 +187,7 @@ function MethodsRoute() {
       verify={d.verify() ?? null}
       loading={d.snapLoading()}
       error={d.snapError()}
+      history={d.history() ?? null}
     />
   );
 }
@@ -174,7 +196,14 @@ function BreaksRoute() {
   const d = useDesk();
   return (
     <Show when={!d.blocked()} fallback={<BlockedNotice />}>
-      <BreaksPage snapshot={d.snapshot() ?? null} loading={d.snapLoading()} error={d.snapError()} />
+      <BreaksPage
+        snapshot={d.snapshot() ?? null}
+        loading={d.snapLoading()}
+        error={d.snapError()}
+        history={d.history() ?? null}
+        historyLoading={d.historyLoading()}
+        historyError={d.historyError()}
+      />
     </Show>
   );
 }
@@ -203,6 +232,10 @@ function Layout(props: ParentProps) {
     if (useMock()) return loadMockVerify(r.asof);
     return fetchVerify(r.asof, digest);
   });
+  const [history] = createResource(async () => {
+    if (useMock()) return null;
+    return fetchHistory();
+  });
   createEffect(() => {
     const r = resolved();
     const req = request();
@@ -213,6 +246,7 @@ function Layout(props: ParentProps) {
   const indexError = createMemo(() => (index.error ? errText(index.error) : null));
   const snapError = createMemo(() => (snapshot.error ? errText(snapshot.error) : null));
   const verifyError = createMemo(() => (verify.error ? errText(verify.error) : null));
+  const historyError = createMemo(() => (history.error ? errText(history.error) : null));
   const blocked = createMemo(() => {
     if (index.error) return true;
     if (!resolved().asof) return true;
@@ -254,6 +288,9 @@ function Layout(props: ParentProps) {
     verify: () => verify() ?? null,
     verifyLoading: () => verify.loading,
     verifyError,
+    history: () => history() ?? null,
+    historyLoading: () => history.loading,
+    historyError,
     blocked,
     blockReason,
   };

@@ -298,3 +298,31 @@ plus `npm test` and `npm run typecheck` in `web`.
 Coverage summary: 230 passed (pytest) plus 132 passed (web), 0 failed. Happy path covered (prior 4 tenor ok fixtures still pass V16 and validateSnapshot). Edge cases covered (3 record subset boundary, exactly 4 records with one duplicated label). Error conditions covered (subset envelope fails V16 and validateSnapshot, duplicate tenor envelope fails V16 and validateSnapshot).
 
 Failure analysis: no product code defects found. Both the Python V16 check and the web validator already enforced the exact 2Y 5Y 10Y 30Y set with no duplicates, so both negative probes failed closed on the first run with no source changes needed. No interim test faults.
+
+## 2026-11-02 - Phase 7 history batch: Test Report
+
+Phase 7 history batch in `history/backfill.json` (1250 daily, 60 CPI)
+plus `web/public/data/history.json` merge (1250 daily with 1 verified,
+60 CPI with 0 verified) and `web/tests/phase7-history.test.mjs`
+(14 tests). Run with `uv run pytest -q` and
+`uv run ruff check src tests` in `/Users/ajeet/Projects/goc-rates-monitor`,
+plus `npm test`, `npm run typecheck`, and `npm run build` in `web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (253 passed) | PASS | Full pipeline suite, includes 8 backfill command tests |
+| uv run ruff check src tests | PASS | All checks passed |
+| uv run ruff format check | NOTE | 57 files formatted, `tests/test_backfill.py` would reformat (line length nit, preexisting) |
+| npm test web (151 passed) | PASS | 23 suites, 0 fail, includes 14 phase7 history tests |
+| npm run typecheck | PASS | tsc noEmit clean |
+| npm run build | PASS | vite build clean plus build:data merge, 52 modules |
+| history.json publishes 1250 daily 1 verified | PASS | Merged history holds 1250 daily rows, exactly 1 verified (2026-10-30, source derived:history_verified_v1) |
+| history.json publishes 60 CPI 0 verified | PASS | Merged history holds 60 CPI months (2021-10 to 2026-09), all verified false |
+| verifyPassed gate | PASS | Index latest entry verify_passed true; failed verify snapshots never promote (web test pins daily stays backfill only) |
+| CPI YoY recompute | PASS | Last CPI row trim and median YoY recompute to 0.0 diff via trailing 12 month compound; first 11 null, month 12 first non null |
+| Slope recompute on verified row | PASS | All four slope pairs recompute to 0.0 diff on the 2026-10-30 verified row |
+| Backfill raw rows carry verified false | PASS | All 1250 daily and 60 CPI backfill rows verified false with derived:backfill_v1 source |
+
+Coverage summary: 253 passed (pytest) plus 151 passed (web), 0 failed. Happy path covered (backfill full and degraded paths, history merge happy path publishes history.json plus index history entry). Edge cases covered (250 row minimum, 1250 daily cap, 60 CPI cap, backfill absent, tampered manifest). Error conditions covered (non ISO asof, Valet failure, config failure, digest mismatch, promoted row forgery with verified true, overlap conflict beyond 1.0 bp, failed verify never promotes, slope and YoY recompute rejects).
+
+Failure analysis: no product code defects found. One style note only: `uv run ruff format --check` flags `tests/test_backfill.py` for a line length reformat; suggested fix is `uv run ruff format tests/test_backfill.py` with no behavior change. Probes confirmed merge outputs directly (history.json 1250 daily with 1 verified at 2026-10-30, 60 CPI with 0 verified, index verify_passed true, YoY and slope recompute diff 0.0).

@@ -42,6 +42,7 @@ _BASKET_COORDINATE_PATTERN = re.compile(r"^[0-9]+(\.[0-9]+)*$")
 _INDEX_BASE_PATTERN = re.compile(r"^\d{4,6}=100$")
 _MISSING_TOKENS = frozenset({"", ".", "..", "...", "na", "null"})
 _MAX_CSV_ROWS = 2_000_000
+MAX_BULK_CSV_ROWS: int = _MAX_CSV_ROWS
 _MEMBER_HASH_CHUNK_BYTES = 65536
 
 BASKET_WEIGHT_TOLERANCE_PP = 0.01
@@ -233,7 +234,7 @@ def _normalize_vector(text: str) -> str:
     return cleaned
 
 
-def _pick_data_member(
+def pick_data_member(
     infos: list[zipfile.ZipInfo],
 ) -> zipfile.ZipInfo:
     """Pick the data CSV member: a name containing data wins, else the largest CSV.
@@ -253,6 +254,13 @@ def _pick_data_member(
     if data_infos:
         return sorted(data_infos, key=lambda info: info.file_size, reverse=True)[0]
     return sorted(pool, key=lambda info: info.file_size, reverse=True)[0]
+
+
+def _pick_data_member(
+    infos: list[zipfile.ZipInfo],
+) -> zipfile.ZipInfo:
+    """Private alias of pick_data_member for backward compatibility."""
+    return pick_data_member(infos)
 
 
 def _pick_basket_member(
@@ -339,7 +347,7 @@ def extract_component_months(
     with archive:
         infos = [info for info in archive.infolist() if not info.is_dir()]
         try:
-            picked = _pick_data_member(infos)
+            picked = pick_data_member(infos)
         except ValueError:
             raise
         if picked.file_size > MAX_BULK_MEMBER_BYTES:

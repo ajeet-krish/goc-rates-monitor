@@ -1,11 +1,16 @@
 import { For, Show } from "solid-js";
+import Chart from "../components/Chart";
 import SectionState from "../components/SectionState";
-import type { SnapshotDoc } from "../lib/types";
+import type { HistoryDoc, SnapshotDoc } from "../lib/types";
+import { historyRangeLabel, splitCpi } from "../lib/history-series";
 
 interface Props {
   snapshot: SnapshotDoc | null;
   loading: boolean;
   error: string | null;
+  history?: HistoryDoc | null;
+  historyLoading?: boolean;
+  historyError?: string | null;
 }
 
 function topContributors(snapshot: SnapshotDoc) {
@@ -21,6 +26,8 @@ export default function InflationPage(props: Props) {
   const validation = () => inflation()?.validation ?? null;
   const bulkEntries = () => Object.entries(inflation()?.bulk ?? {});
   const flagState = () => (validation()?.exceeds_gate ? "fail" : "pass");
+  const trimHistory = () => splitCpi(props.history, (_m, _i, row) => row.trim_mom_percent);
+  const medianHistory = () => splitCpi(props.history, (_m, _i, row) => row.median_mom_percent);
   return (
     <section aria-label="Inflation">
       <p class="hero-kicker">Inflation: experimental trim and median</p>
@@ -145,6 +152,44 @@ export default function InflationPage(props: Props) {
               Seasonally adjusted values reused as published. Short sha12 prefixes
               match the leading 12 hex of each stored sha256.
             </p>
+          </div>
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
+            <h2>History: trim and median in percent per month</h2>
+            <Show when={props.historyError}>
+              <p class="figure-caption" role="status">
+                History unavailable: {props.historyError}. History never blocks the desk.
+              </p>
+            </Show>
+            <Show when={!props.historyError && (props.history?.cpi.length ?? 0) > 0}>
+              <Chart
+                title="Core inflation history"
+                xLabel="Month order"
+                yLabel="Rate (percent_per_month)"
+                series={[
+                  { label: "Trim verified", color: "#2e7f79", points: trimHistory().verified },
+                  {
+                    label: "Trim backfilled",
+                    color: "#9db8b5",
+                    dash: [6, 4],
+                    points: trimHistory().backfilled,
+                  },
+                  { label: "Median verified", color: "#1d2f3a", points: medianHistory().verified },
+                  {
+                    label: "Median backfilled",
+                    color: "#a8b5bd",
+                    dash: [6, 4],
+                    points: medianHistory().backfilled,
+                  },
+                ]}
+              />
+              <p class="figure-caption">
+                CPI history uses one uniform vintage (2024 expenditure, link
+                month 2025-05, provisional). Backfilled months are unverified
+                (source derived:backfill_v1) and render dashed and muted.
+                Verified months carry snapshot digests. Annual rates compound
+                the trailing 12 months within 0.01.
+              </p>
+            </Show>
           </div>
         </Show>
       </SectionState>

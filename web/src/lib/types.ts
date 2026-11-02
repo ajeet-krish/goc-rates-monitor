@@ -283,4 +283,68 @@ export interface DataIndex {
     string,
     { snapshot_sha256: string; verify_passed: boolean | null; bytes_utf8: number }
   >;
+  history?: {
+    sha256: string;
+    bytes_utf8: number;
+    daily_count: number;
+    cpi_count: number;
+  };
+}
+
+export type HistorySource = "derived:backfill_v1" | "derived:history_verified_v1";
+
+export type HistoryTenor = "2Y" | "5Y" | "10Y" | "30Y";
+
+export type HistorySlopeKey = "2Y_5Y" | "2Y_10Y" | "5Y_30Y" | "10Y_30Y";
+
+export type HistorySpreadStatus = "ok" | "partial" | "missing";
+
+export interface HistoryRow {
+  date: string;
+  yields_percent: Record<HistoryTenor, number>;
+  yields_unit: Unit;
+  slopes_bp: Record<HistorySlopeKey, number>;
+  slopes_unit: Unit;
+  spreads_bp: Record<HistoryTenor, number | null>;
+  spreads_unit: Unit;
+  spreads_status: HistorySpreadStatus;
+  switch_in_window: boolean;
+  switch_by_tenor: Record<HistoryTenor, boolean>;
+  calendar_gap: boolean;
+  verified: boolean;
+  source: HistorySource;
+  snapshot_sha256: string | null;
+  input_digest_sha256: string | null;
+  row_digest: string;
+}
+
+export interface CpiHistoryRow {
+  month: string;
+  trim_mom_percent: number;
+  median_mom_percent: number;
+  median_component: string;
+  trim_yoy_percent: number | null;
+  median_yoy_percent: number | null;
+  mom_unit: Unit;
+  yoy_unit: Unit;
+  verified: boolean;
+  source: HistorySource;
+  snapshot_sha256: string | null;
+  row_digest: string;
+}
+
+export interface HistoryDoc {
+  metadata: {
+    asof: string;
+    schema_version: number;
+    method: string;
+    daily_count: number;
+    daily_count_unit: string;
+    cpi_count: number;
+    cpi_count_unit: string;
+  };
+  daily: HistoryRow[];
+  cpi: CpiHistoryRow[];
+  provenance: Record<string, unknown>;
+  exclusions: unknown[];
 }

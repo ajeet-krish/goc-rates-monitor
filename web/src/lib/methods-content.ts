@@ -195,6 +195,25 @@ export const METHOD_SECTIONS: MethodSection[] = [
       "Fail closed demo values on the verification page are synthetic, carry no check id, and never enter the snapshot.",
     ],
   },
+  {
+    id: "history",
+    kicker: "History merge",
+    title: "Verified precedence, backfilled spans stay dashed",
+    method: "history_merge_v1",
+    summary:
+      "The sealed backfill plus published snapshots merge into one history document. Verified snapshot rows win, backfilled rows fill the rest, and any overlap beyond tolerance fails the build.",
+    points: [
+      "Sources are Valet group bond_yields_benchmark for Canadian legs, FRED DGS for US legs with T+1 latency, and StatCan bulk 18100004 plus 18100256 plus 18100007 for CPI.",
+      "Windows are joint complete daily rows (up to 1250) and monthly CPI rows (up to 60) within a 5 MiB document cap.",
+      "Overlap checks compare snapshot yields to backfill yields within 1.0 bp and CPI moms within 0.01 pp. Verified rows carry snapshot digests with source derived:history_verified_v1, backfilled rows carry source derived:backfill_v1.",
+      "Backfilled spans render dashed and muted with an unverified caption. History loads independently and never blocks the desk.",
+      "CPI history uses one uniform vintage (2024 expenditure, link month 2025-05, provisional) so every month reads the same basket.",
+    ],
+    limits: [
+      "A tampered manifest, a promoted row with verified true in the backfill, an overlap conflict, or an absent artifact all fail the build with nothing published.",
+      "History counts and bytes are capped before any recompute, dates must be strictly increasing, and row digests must recompute from the canonical form.",
+    ],
+  },
 ];
 
 export const ASSUMPTION_ROWS: AssumptionRow[] = [

@@ -2,13 +2,17 @@ import { For, Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
 import SectionState from "../components/SectionState";
-import type { SnapshotDoc } from "../lib/types";
+import type { HistoryDoc, SnapshotDoc } from "../lib/types";
+import { historyRangeLabel, splitHistory } from "../lib/history-series";
 import { fmtBp, fmtShortSha } from "../lib/format";
 
 interface Props {
   snapshot: SnapshotDoc | null;
   loading: boolean;
   error: string | null;
+  history?: HistoryDoc | null;
+  historyLoading?: boolean;
+  historyError?: string | null;
 }
 
 function gateReason(gate: string): string {
@@ -33,6 +37,7 @@ export default function BreaksPage(props: Props) {
     if (!b || !Array.isArray(b.slopes_bp)) return [];
     return b.slopes_bp.map((s, i) => ({ x: i, y: s }));
   };
+  const yield10Y = () => splitHistory(props.history, (_d, _i, row) => row.yields_percent["10Y"]);
   return (
     <section aria-label="Breaks">
       <p class="hero-kicker">Breaks: switches suppress, never splice</p>
@@ -165,6 +170,37 @@ export default function BreaksPage(props: Props) {
                 ]}
               />
             </div>
+          </div>
+          <div class="ledger-card" style={{ margin: "16px 0" }}>
+            <h2>History: 10Y yield with switch windows</h2>
+            <Show when={props.historyError}>
+              <p class="figure-caption" role="status">
+                History unavailable: {props.historyError}. History never blocks the desk.
+              </p>
+            </Show>
+            <Show when={!props.historyError && (props.history?.daily.length ?? 0) > 0}>
+              <Chart
+                title="10Y yield history"
+                xLabel="History order"
+                yLabel="Yield (percent)"
+                series={[
+                  { label: "10Y verified", color: "#1d2f3a", points: yield10Y().verified },
+                  {
+                    label: "10Y backfilled",
+                    color: "#a8b5bd",
+                    dash: [6, 4],
+                    points: yield10Y().backfilled,
+                  },
+                ]}
+              />
+              <p class="figure-caption">
+                Range {historyRangeLabel(props.history)}. Backfilled spans are
+                unverified (source derived:backfill_v1) and render dashed and
+                muted. Switch windows suppress day over day deltas to null with
+                gate switch_break, calendar gaps keep the number with a flag.
+                No adjusted history is published.
+              </p>
+            </Show>
           </div>
         </Show>
       </SectionState>

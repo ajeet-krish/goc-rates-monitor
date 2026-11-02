@@ -11,7 +11,7 @@ interface Props {
   title: string;
   xLabel: string;
   yLabel: string;
-  series: { label: string; points: ChartPoint[]; color: string }[];
+  series: { label: string; points: ChartPoint[]; color: string; dash?: number[]; width?: number }[];
 }
 
 interface BuiltData {
@@ -84,7 +84,8 @@ export default function Chart(props: Props) {
           ...props.series.map((s) => ({
             label: s.label,
             stroke: s.color,
-            width: 2,
+            width: s.width ?? 2,
+            dash: s.dash,
             points: { show: false },
             spanGaps: false,
           })),

@@ -1,5 +1,5 @@
 import { createContext, useContext, type ParentProps } from "solid-js";
-import type { DataIndex, SnapshotDoc, VerifyReport } from "./types";
+import type { DataIndex, HistoryDoc, SnapshotDoc, VerifyReport } from "./types";
 
 export interface DeskState {
   index: () => DataIndex | undefined;
@@ -12,6 +12,10 @@ export interface DeskState {
   verify: () => VerifyReport | null | undefined;
   verifyLoading: () => boolean;
   verifyError: () => string | null;
+  /** Merged history loads independently and never blocks derived displays. */
+  history: () => HistoryDoc | null | undefined;
+  historyLoading: () => boolean;
+  historyError: () => string | null;
   /** True while derived values must stay hidden (verify missing, failed, or errored). */
   blocked: () => boolean;
   blockReason: () => string | null;
