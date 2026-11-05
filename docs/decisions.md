@@ -1,6 +1,6 @@
 # goc-rates-monitor Decision Records
 
-Last updated: 2026-11-02 (Phase 6)
+Last updated: 2026-11-05 (Phase 8.2)
 
 ## D01: uv for Python management
 
@@ -16,9 +16,12 @@ longer ignores the lockfile.
 
 ## D03: Single daily workflow
 
-One scheduled run per day after North American close. Rationale: sources
-publish on lags (CORRA T+1, FRED DGS T+1), so intraday runs add staleness
-risk. Consequences: snapshot date maps to the previous joint business day.
+One scheduled run per weekday at 16:30 UTC after the previous North
+American close. Rationale: sources publish on lags (CORRA T+1, FRED DGS
+T+1, BoC bond yields D+1 at 10:00 EST), so intraday runs add staleness
+risk. Consequences: snapshot date maps to the previous joint business
+day, and the run polls until that date's Valet print exists before
+snapshotting.
 
 ## D04: Verify tolerance of 1.0 basis point
 
@@ -112,6 +115,9 @@ or payload driven memory growth. Consequences: yields must sit within minus
 and 10 knots, bills within 366 days, carry horizons within 1.0 year, slopes
 within 5000 bp, and histories within 2000 observations with at most 2000
 spread records and 10000 quantities.
+
+Superseded 2026-11-05 by D39 (Phase 8.2): history observations are now
+capped at 2750, while spread records stay at 2000.
 
 ## D17: Strict ISO dates with monotonic history guards
 
@@ -333,3 +339,19 @@ lengths, and history payloads explicit and prevents upstream growth from
 exhausting memory. Consequences: cashflow generation, anchor solving, and
 document assembly fail closed beyond the caps, and verify checks caps
 before any recompute.
+
+Superseded 2026-11-05 by D39 (Phase 8.2): the daily row bounds are now
+250 to 2750. The bootstrap bounds, the CPI month bounds, and the 5 MiB
+document cap stand as written.
+
+## D39: Phase 8.2: 10 year window with raised history bounds
+
+Dated 2026-11-05. `MAX_BACKFILL_DAILY_ROWS` and `MAX_HISTORY_OBS` are both
+2750, `FRED_LOOKBACK_DAYS` and `VALET_LOOKBACK_DAYS` are both 3653 days
+(about ten calendar years including leap days), and
+`MIN_BACKFILL_DAILY_ROWS` stays 250. Rationale: a trailing ten year window
+matches the BoC ten year lookup standard while the raised row and
+observation caps keep every count bound fail closed. Consequences: this
+supersedes the daily row upper bound in D38 and the history observation
+bound in D16, byte caps stay 5 MiB, and drift tests pin the raised values
+in both the pipeline and the web build.

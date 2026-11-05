@@ -1,11 +1,12 @@
 {
-  "generated_utc": "2026-11-05T16:40:55.990Z",
+  "generated_utc": "2026-11-05T23:06:22.295Z",
   "dates": [
     "2026-10-30",
     "2026-11-02",
-    "2026-11-03"
+    "2026-11-03",
+    "2026-11-04"
   ],
-  "latest": "2026-11-03",
+  "latest": "2026-11-04",
   "entries": {
     "2026-10-30": {
       "snapshot_sha256": "aaf5c13b155b276217329e347b3f0afc44b9a82fc89e0251524ee201acd397bf",
@@ -13,21 +14,26 @@
       "bytes_utf8": 42027
     },
     "2026-11-02": {
-      "snapshot_sha256": "9b14087c2c9f27a5048c9df29da86f7b8a725120c8581048414339283436dfba",
-      "verify_passed": true,
-      "bytes_utf8": 41889
-    },
-    "2026-11-03": {
-      "snapshot_sha256": "45e51eeaf40dafde5e9dc1b038f213880b110bfdb51cb2a23c11d9c22f516d90",
+      "snapshot_sha256": "6431adee88bcd77c9985e9575b441c56c2576512a96cfcada9800d21c1b3698a",
       "verify_passed": true,
       "bytes_utf8": 41890
+    },
+    "2026-11-03": {
+      "snapshot_sha256": "52c4bf3dab78ca4d59958e9d0d117d3b90753ece353a8cade4c2197b3ca12249",
+      "verify_passed": true,
+      "bytes_utf8": 41938
+    },
+    "2026-11-04": {
+      "snapshot_sha256": "b7c99856312c3fb982f0ebb161c76104f605479e23ff00677045fed45e00c877",
+      "verify_passed": true,
+      "bytes_utf8": 41975
     }
   },
   "history": {
-    "sha256": "7f9804f13c1c0187d895bf1fa0c609b5225a4af203cfdeca675a2826c4644365",
-    "bytes_utf8": 1309113,
-    "daily_count": 1250,
+    "sha256": "598c6dac185afea2cc87a8200815cf16d35f1e6874cdf4f8efb6a5f4baf3c9f3",
+    "bytes_utf8": 2569322,
+    "daily_count": 2494,
     "cpi_count": 60,
-    "trimmed_backfilled_count": 2
+    "trimmed_backfilled_count": 0
   }
 }

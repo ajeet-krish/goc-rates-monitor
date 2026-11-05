@@ -2,6 +2,63 @@
 
 Last updated: 2026-11-05
 
+## 2026-11-05 - Phase 8 Phase 8.2: Test Report
+
+Phase 8.2 test coverage for the 10 year cap raise, print date attribution,
+and re-sealed artifacts. New Python files `tests/test_phase82_window.py`
+(4 tests), `tests/test_phase82_artifacts.py` (12 tests), and
+`tests/test_phase82_poll.py` (6 tests), plus new
+`web/tests/phase8-82-reseal.test.mjs` (8 tests) and one absolute cap pin in
+`web/tests/phase5-lows.test.mjs`. Run with `uv run pytest`,
+`uv run ruff check src tests`, `uv run ruff format --check src tests`, and
+`uv run mypy src` in `/Users/ajeet/Projects/goc-rates-monitor`, plus
+`npm test`, `npm run typecheck`, and `node scripts/build-data.mjs` in `web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| uv run pytest (285 passed) | PASS | Full pipeline suite, 263 prior plus 22 new Phase 8.2 tests |
+| uv run ruff check src tests | PASS | All checks passed |
+| uv run ruff format --check src tests | PASS | 62 files already formatted |
+| uv run mypy src | PASS | No issues in 34 source files |
+| npm test web (244 passed) | PASS | 40 suites, 0 fail, 235 prior plus 8 reseal plus 1 cap pin |
+| npm run typecheck | PASS | tsc noEmit clean, exit 0 |
+| node scripts/build-data.mjs (real repo) | PASS | Exit 0, published 4 date(s) plus history, 2494 daily rows, trimmed 0 |
+| test_lookback_constants_pin_the_ten_year_window | PASS | FRED and Valet lookbacks both pin 3653 days and agree, over the 3469 day floor |
+| test_lookback_arithmetic_lands_on_the_pinned_start | PASS | asof 2026-11-04 minus 3653 days lands on 2016-11-03, span 3653 days |
+| test_fred_fetch_window_hands_the_pinned_start_to_the_client | PASS | All four tenors request observation_start 2016-11-03, end 2026-11-04, limit 2750, sort asc, fetcher mocked so no network |
+| test_valet_fetch_window_hands_the_pinned_start_to_run_backfill | PASS | run_backfill calls fetch_valet_group with start_date 2016-11-03 and recent_limit 2750, exits 0 with 300 mock rows |
+| test_backfill_daily_rows_sit_between_floor_and_cap | PASS | 2494 rows between 2400 and 2750, metadata counts and method pins match |
+| test_backfill_span_covers_ten_years_ending_at_the_asof | PASS | First date 2016-11-03 on or before 2016-12-05, last date equals asof within the 3 day tolerance, span 3653 days over 3469 |
+| test_backfill_rows_all_unverified_with_null_snapshot_sha | PASS | All 2494 daily rows verified false with null snapshot and input digest shas, all 60 CPI rows verified false |
+| test_backfill_dates_strictly_ascending_and_unique | PASS | Daily dates strictly increasing and unique, CPI months ascending and unique |
+| test_backfill_manifest_binds_the_file_bytes | PASS | Manifest sha256 ce846ca6 matches the 2569091 committed bytes, under the 5 MiB cap |
+| test_backfill_document_roundtrips_through_the_sealer | PASS | build_backfill_document rebuilds the artifact identically, proving every row digest, count, and cap |
+| test_merged_history_count_matches_backfill_plus_snapshot_only_dates | PASS | 2494 equals 2494 backfill rows plus 4 snapshot-only dates minus 4 overlaps, dates ascending unique |
+| test_merged_history_pins_the_four_resealed_verified_dates | PASS | Verified rows exactly 2026-10-30, 2026-11-02, 2026-11-03, 2026-11-04 carrying the index shas, all other rows unverified backfill |
+| test_merged_history_keeps_the_sixty_cpi_months | PASS | 60 CPI months equal to the sealed backfill months, none verified |
+| test_merged_history_metadata_and_exclusions_match_the_seal | PASS | history_merge_v1 method, same asof, same exclusion list, same provenance keys |
+| test_index_history_entry_binds_the_published_history_bytes | PASS | Index sha256 and byte count match history.json bytes, trimmed_backfilled_count 0 |
+| test_index_latest_and_dates_cover_the_resealed_snapshots | PASS | latest 2026-11-04, four dates, verify_passed true each, snapshot shas match the manifests |
+| test_poll_step_parses_with_one_quoted_heredoc | PASS | wait_for_print run block holds exactly one quoted compilable python heredoc |
+| test_poll_constants_and_weekday_cron_are_sane | PASS | cron 30 16 * * 1-5, interval 300 seconds, deadline 2700 seconds, nine attempts, under one hour |
+| test_all_tenors_observed_exits_zero | PASS | Extracted heredoc with mocked fetch_valet_group exits 0, complete print message, start and end date both equal the target |
+| test_missing_tenor_exits_nonzero | PASS | Dropping the 30Y series exits 1 with incomplete print naming 30Y no observation |
+| test_null_value_tenor_exits_nonzero | PASS | Missing quality with null values exits 1 with value not observed for all four tenors |
+| test_fetch_failure_exits_nonzero | PASS | Raising fetch exits 1 with valet poll attempt failed on stderr |
+| web pins MAX_HISTORY_OBS at 2750 | PASS | Absolute pin beside the parameterized history_count gates in phase5-lows |
+| web published history.json passes validateHistory | PASS | Real 2494 row merged history validates including row digest recompute |
+| web resealed triples pass validateSnapshot and validateVerify | PASS | All four snapshots validate, verify reports pass with 25 checks, manifest and verify shas bind the snapshot bytes |
+| web daily_count formula | PASS | 2494 equals backfill rows plus snapshot-only dates minus overlaps, within 2400 to 2750 |
+| web four verified dates pinned | PASS | Verified rows exactly the four re-sealed dates with derived:history_verified_v1 source and index shas |
+| web backfill rows carried unverified | PASS | Every non re-sealed backfill row survives the merge with verified false and null sha, carried plus verified equals history length |
+| web 60 CPI months with zero trims | PASS | CPI months equal the sealed backfill months, all unverified, trimmed_backfilled_count 0 |
+| web index history entry binds history bytes | PASS | Index sha256, byte count, daily and CPI counts match the published file, latest and dates pin the four re-sealed dates |
+| web raised 2750 caps pinned | PASS | MAX_HISTORY_DAILY and MAX_HISTORY_OBS both equal 2750 beside the re-sealed counts |
+
+Coverage summary: 285 passed (pytest) plus 244 passed (web), 0 failed. Happy path covered (ten year window handed to both fetchers, sealed backfill and merged history accept, poll passes when all tenors observed, build publishes 2494 rows with zero trims). Edge cases covered (window arithmetic at the pinned start, 2400 to 2750 row band, 9.5 year span floor, asof tolerance of 3 days, overlap arithmetic where all four snapshot dates already sit in the backfill). Error conditions covered (missing tenor, null quality values, raising Valet fetch all exit nonzero from the extracted poll script, manifest sha mismatch and digest drift would fail the roundtrip and byte binding tests).
+
+Failure analysis: no product code defects found and no interim test failures; every new test passed on the first run after ruff formatting. Two process notes. First, the poll step test extracts the quoted heredoc from the parsed workflow YAML and executes it in process with goc_rates.clients.base, goc_rates.clients.valet, and goc_rates.config replaced in sys.modules, so the real CI loop logic runs without network instead of falling back to constant checks only; the cron and poll constants are additionally pinned as a second line of defense. Second, the verification run of `node scripts/build-data.mjs` regenerated `web/public/data/index.json` with a fresh generated_utc of 2026-11-05T19:40:19.920Z; history.json content was byte identical and nothing was committed.
+
 ## 2026-11-05 - Phase 8 Phase 1: Test Report
 
 Phase 8 Phase 1 merged history overflow fix coverage in

@@ -51,7 +51,7 @@ export const MAX_CPI_COMPONENTS = 128;
 export const MAX_CPI_MONTHS = 240;
 export const MAX_SWITCH_EVENTS = 64;
 export const MAX_DOD_RECORDS = 4;
-export const MAX_HISTORY_OBS = 2000;
+export const MAX_HISTORY_OBS = 2750;
 export const MAX_QUANTITIES = 10000;
 export const MAX_INDEX_DATES = 2000;
 export const MAX_PROVENANCE_ENTRIES = 64;
@@ -1560,7 +1560,7 @@ export function validateIndex(doc: unknown): DataIndex {
 }
 
 /** History caps mirror the backfill bounds in src/goc_rates/limits.py. */
-export const MAX_HISTORY_DAILY = 1250;
+export const MAX_HISTORY_DAILY = 2750;
 export const MAX_HISTORY_CPI = 60;
 export const MAX_HISTORY_BYTES = 5 * 1024 * 1024;
 export const HISTORY_METHOD = "history_merge_v1";

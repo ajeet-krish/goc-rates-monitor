@@ -1,5 +1,5 @@
 {
-  "checked_utc": "2026-11-05T13:33:37+00:00",
+  "checked_utc": "2026-11-05T18:21:14+00:00",
   "checks": [
     {
       "detail": "canonical JSON round trip succeeded",
@@ -57,12 +57,12 @@
       "passed": true
     },
     {
-      "detail": "max age 1 business days (unit: business_days)",
+      "detail": "max age 0 business days (unit: business_days)",
       "id": "V12",
       "passed": true
     },
     {
-      "detail": "bootstrap curve stored worst 0.9617 bp within 1.0 bp (unit: bp)",
+      "detail": "bootstrap curve stored worst 0.8841 bp within 1.0 bp (unit: bp)",
       "id": "V13",
       "passed": true
     },
@@ -82,7 +82,7 @@
       "passed": true
     },
     {
-      "detail": "bootstrap carry diff 0.0000 bp within 1.0 bp, long zero diff 0.0000 bp, rolled zero diff 0.0000 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 98.3376, duration 4.4274 years, DV01 435.38 per million; unit: mixed)",
+      "detail": "bootstrap carry diff 0.0000 bp within 1.0 bp, long zero diff 0.0000 bp, rolled zero diff 0.0000 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 98.6173, duration 4.4267 years, DV01 436.55 per million; unit: mixed)",
       "id": "V17",
       "passed": true
     },
@@ -122,7 +122,7 @@
       "passed": true
     },
     {
-      "detail": "solver worst 0.9617 bp within 1.0 bp (anchors 0.0000 bp, zeros 0.0000 bp, reprice 0.9617 bp, yield agreement 0.0000 bp; unit: bp)",
+      "detail": "solver worst 0.8841 bp within 1.0 bp (anchors 0.0000 bp, zeros 0.0000 bp, reprice 0.8841 bp, yield agreement 0.0000 bp; unit: bp)",
       "id": "V25",
       "passed": true
     }
@@ -130,7 +130,7 @@
   "failed_count": 0,
   "passed": true,
   "passed_count": 25,
-  "snapshot_sha256": "28211c97ba3dba0727eabdc24d3a850ec6de489904d884d69b1b9a358e2159d5",
+  "snapshot_sha256": "b7c99856312c3fb982f0ebb161c76104f605479e23ff00677045fed45e00c877",
   "tolerance_bp": 1.0,
   "tolerance_unit": "basis_points"
 }

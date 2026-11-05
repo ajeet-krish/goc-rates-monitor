@@ -97,8 +97,11 @@ payments per year 2. `statcan_indicators` starts empty for the Phase 1 skeleton.
 
 ## Scheduling
 
-One daily workflow run after North American close. Phase 2 adds curve
-charts. Later phases add alerts plus backfill.
+One weekday workflow run at 16:30 UTC after the previous North American
+close. The Bank of Canada publishes the previous business day's
+benchmark yields at 10:00 EST, so a poll gate waits for that print and
+fails the run when it is missing. Phase 2 adds curve charts. Later
+phases add alerts plus backfill.
 
 ## Phase 4 CPI engine
 

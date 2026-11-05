@@ -157,7 +157,7 @@ def fetch_valet_group(
     Optional start_date and end_date bound the upstream window as strict
     ISO query params. Optional recent_limit keeps only the most recent N
     prints per series and is capped by MAX_HISTORY_OBS so the 254 print
-    backtest stays bounded at 2000.
+    backtest stays within the observation cap.
     """
     from goc_rates.limits import MAX_HISTORY_OBS
 

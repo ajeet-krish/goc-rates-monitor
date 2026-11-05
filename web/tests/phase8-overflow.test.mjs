@@ -14,10 +14,11 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyOverflowPolicy } from "../scripts/history-overflow.mjs";
-import { validateHistory } from "../src/lib/validate.ts";
+import { validateHistory, MAX_HISTORY_DAILY } from "../src/lib/validate.ts";
 
 const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts");
-const CAP = 1250;
+// The overflow cap follows the raised 10 year history cap in validate.ts.
+const CAP = MAX_HISTORY_DAILY;
 
 function dateAt(index) {
   const start = Date.UTC(2021, 9, 25);
@@ -62,26 +63,26 @@ function isVerifiedRow(row) {
 }
 
 describe("applyOverflowPolicy merged daily overflow", () => {
-  it("drops exactly the oldest backfill row at 1251 rows", () => {
-    const rows = buildRows(1250, 1);
-    assert.equal(rows.length, 1251);
+  it("drops exactly the oldest backfill row at " + (CAP + 1) + " rows", () => {
+    const rows = buildRows(CAP, 1);
+    assert.equal(rows.length, CAP + 1);
     const result = applyOverflowPolicy(rows, CAP);
-    assert.equal(result.rows.length, 1250);
+    assert.equal(result.rows.length, CAP);
     assert.equal(result.trimmedCount, 1);
     assert.equal(result.rows[0], rows[1]);
     assert.equal(result.rows[0].date, dateAt(1));
     assert.ok(!result.rows.includes(rows[0]));
     const verifiedKept = result.rows.filter(isVerifiedRow);
     assert.equal(verifiedKept.length, 1);
-    assert.equal(verifiedKept[0], rows[1250]);
-    assert.equal(verifiedKept[0].date, dateAt(1250));
+    assert.equal(verifiedKept[0], rows[CAP]);
+    assert.equal(verifiedKept[0].date, dateAt(CAP));
   });
 
-  it("drops the two oldest backfill rows at 1252 rows", () => {
-    const rows = buildRows(1250, 2);
-    assert.equal(rows.length, 1252);
+  it("drops the two oldest backfill rows at " + (CAP + 2) + " rows", () => {
+    const rows = buildRows(CAP, 2);
+    assert.equal(rows.length, CAP + 2);
     const result = applyOverflowPolicy(rows, CAP);
-    assert.equal(result.rows.length, 1250);
+    assert.equal(result.rows.length, CAP);
     assert.equal(result.trimmedCount, 2);
     assert.equal(result.rows[0].date, dateAt(2));
     assert.ok(!result.rows.includes(rows[0]));
@@ -90,11 +91,13 @@ describe("applyOverflowPolicy merged daily overflow", () => {
   });
 
   it("refuses to publish when verified rows alone exceed the cap", () => {
-    const rows = buildRows(0, 1251);
-    assert.equal(rows.length, 1251);
+    const rows = buildRows(0, CAP + 1);
+    assert.equal(rows.length, CAP + 1);
     assert.throws(
       () => applyOverflowPolicy(rows, CAP),
-      /verified daily rows 1251 alone exceed the 1250 cap: refusing to publish/
+      new RegExp(
+        "verified daily rows " + (CAP + 1) + " alone exceed the " + CAP + " cap: refusing to publish"
+      )
     );
   });
 
@@ -113,15 +116,15 @@ describe("applyOverflowPolicy merged daily overflow", () => {
 
   it("drops the oldest dates in order and keeps verified digests intact", () => {
     const rows = [];
-    for (let i = 0; i < 1252; i++) {
-      rows.push(i === 10 || i === 1251 ? verifiedRow(dateAt(i)) : backfillRow(dateAt(i)));
+    for (let i = 0; i < CAP + 2; i++) {
+      rows.push(i === 10 || i === CAP + 1 ? verifiedRow(dateAt(i)) : backfillRow(dateAt(i)));
     }
     const verifiedBefore = rows
       .filter(isVerifiedRow)
       .map((row) => ({ date: row.date, digest: row.snapshot_sha256 }));
     assert.equal(verifiedBefore.length, 2);
     const result = applyOverflowPolicy(rows, CAP);
-    assert.equal(result.rows.length, 1250);
+    assert.equal(result.rows.length, CAP);
     assert.equal(result.trimmedCount, 2);
     assert.equal(result.rows[0].date, dateAt(2));
     assert.ok(!result.rows.includes(rows[0]));
@@ -279,6 +282,7 @@ function snapshotWithBenchmarks(date, yields) {
         "10Y": { valet_label: "10Y", valet: { value: yields["10Y"], unit: "percent", quality: "observed", source_id: "valet:BD.CDN.10YR.DQ.YLD" } },
         "30Y": { valet_label: "30Y", valet: { value: yields["30Y"], unit: "percent", quality: "observed", source_id: "valet:BD.CDN.LONG.DQ.YLD" } },
       },
+      curve: { settlement_date: date },
     },
     provenance: {
       valet: {
@@ -365,7 +369,7 @@ afterEach(async () => {
 });
 
 describe("build-data publishes a capped merged daily history", () => {
-  it("trims one oldest backfill row at 1251 merged rows and records the trim", async () => {
+  it("trims one oldest backfill row at " + (CAP + 1) + " merged rows and records the trim", async () => {
     const yields = { "2Y": 3.28, "5Y": 3.51, "10Y": 3.78, "30Y": 4.11 };
     const dates = datesEnding("2026-11-01", CAP);
     const daily = dates.map((date) => backfillDailyRow(date, yields));
@@ -377,7 +381,10 @@ describe("build-data publishes a capped merged daily history", () => {
     );
     const result = await runBuild(sandbox);
     assert.equal(result.code, 0, result.err);
-    assert.match(result.err, /trimmed 1 oldest backfilled daily row\(s\) to stay within the 1250 cap/);
+    assert.match(
+      result.err,
+      new RegExp("trimmed 1 oldest backfilled daily row\\(s\\) to stay within the " + CAP + " cap")
+    );
     const history = await readJson(sandbox, "history.json");
     assert.equal(history.daily.length, CAP);
     assert.equal(history.metadata.daily_count, CAP);
@@ -408,7 +415,7 @@ describe("build-data publishes a capped merged daily history", () => {
     assert.equal(index.history.trimmed_backfilled_count, 0);
   });
 
-  it("trims exactly two oldest backfill rows at the real 1252 row CI shape", async () => {
+  it("trims exactly two oldest backfill rows at the real " + (CAP + 2) + " row CI shape", async () => {
     const yields = { "2Y": 3.28, "5Y": 3.51, "10Y": 3.78, "30Y": 4.11 };
     const dates = datesEnding("2026-10-30", CAP);
     const daily = dates.map((date) => backfillDailyRow(date, yields));
@@ -420,7 +427,7 @@ describe("build-data publishes a capped merged daily history", () => {
     assert.equal(result.code, 0, result.err);
     assert.match(
       result.err,
-      /trimmed 2 oldest backfilled daily row\(s\) to stay within the 1250 cap/
+      new RegExp("trimmed 2 oldest backfilled daily row\\(s\\) to stay within the " + CAP + " cap")
     );
     const history = await readJson(sandbox, "history.json");
     assert.equal(history.daily.length, CAP);
@@ -449,11 +456,12 @@ describe("build-data publishes a capped merged daily history", () => {
 
   it("fails closed with no published output when verified rows alone exceed the cap", async () => {
     const yields = { "2Y": 3.28, "5Y": 3.51, "10Y": 3.78, "30Y": 4.11 };
-    const backfillDates = ["2022-06-30", "2022-07-01"];
+    // The backfill dates must stay older than the oldest verified date.
+    const verifiedDates = datesEnding("2026-11-03", CAP + 1);
+    const backfillDates = ["2019-04-22", "2019-04-23"];
     const daily = backfillDates.map((date) => backfillDailyRow(date, yields));
     await writeBackfill(sandbox, backfillDoc(daily, [backfillCpiRow("2026-09")]));
-    const verifiedDates = datesEnding("2026-11-03", CAP + 1);
-    assert.equal(verifiedDates.length, 1251);
+    assert.equal(verifiedDates.length, CAP + 1);
     assert.ok(verifiedDates[0] > backfillDates[1], "backfill stays disjoint from the verified range");
     for (const date of verifiedDates) {
       await writeTriple(sandbox, date, snapshotWithBenchmarks(date, yields));
@@ -463,7 +471,13 @@ describe("build-data publishes a capped merged daily history", () => {
     assert.equal(result.code, 1);
     assert.match(
       result.err,
-      /build-data: verified daily rows 1251 alone exceed the 1250 cap: refusing to publish/
+      new RegExp(
+        "build-data: verified daily rows " +
+          (CAP + 1) +
+          " alone exceed the " +
+          CAP +
+          " cap: refusing to publish"
+      )
     );
     assert.doesNotMatch(result.out, /published/);
     const entries = await readdir(sandbox.outDir).catch(() => null);

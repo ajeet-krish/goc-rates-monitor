@@ -29,6 +29,7 @@ from goc_rates.config import BenchmarkMap, load_benchmark_map, load_cpi_config
 from goc_rates.cpi.bulk import BulkTable, fetch_bulk_table
 from goc_rates.cpi.section import build_inflation_section_from_bulk
 from goc_rates.dates import parse_strict_iso_date
+from goc_rates.limits import MAX_HISTORY_OBS
 
 FRED_DEGRADED_REASON = "FRED_API_KEY absent, US leg unavailable"
 BACKTEST_DEGRADED_REASON = "FRED_API_KEY absent, joint history unavailable"
@@ -588,7 +589,7 @@ def run_live_snapshot(
         cpi_fetch_error: ValueError | None = None
         with BaseClient() as client:
             valet_by_series = fetch_valet_group(
-                VALET_GROUP, client, expected_labels=expected_labels, recent_limit=2000
+                VALET_GROUP, client, expected_labels=expected_labels, recent_limit=MAX_HISTORY_OBS
             )
             fred_by_series: dict[str, list[Any]] = {}
             fred_available = api_key is not None and bool(api_key.strip())
@@ -604,7 +605,7 @@ def run_live_snapshot(
                             api_key=api_key,
                             observation_start=start_text,
                             observation_end=end_text,
-                            limit=2000,
+                            limit=MAX_HISTORY_OBS,
                             sort_order="asc",
                         )
                     except Exception as exc:

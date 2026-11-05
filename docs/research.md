@@ -508,6 +508,12 @@ All source probes below were live on 2026-11-05.
 | Drawdown language belongs to price or total return series; this project stores yields only, so the defensible metric is distance from the trailing window maximum yield in basis points with the window stated | Market convention, no central bank standard found | Medium | Label it `dist_from_peak_yield_bp` with an explicit window, do not call it drawdown without a return series |
 | Probable CPI pinning defect: `config/cpi_components.yaml` labels do not match WDS series titles for the pinned vectors, and the artifact's trim year-over-year diverges from published values (see Validation Data) | WDS `getSeriesInfoFromVector` and published anchors, live 2026-11-05 | High for the metadata mismatch, needs code-reviewer confirmation for impact | Resolve and add a label assertion before any CPI window extension, V19 to V22 currently skip when CPI degrades so the gate has not been running |
 
+Updated 2026-11-05 (Phase 8.2): `FRED_LOOKBACK_DAYS` and `VALET_LOOKBACK_DAYS` are
+3653 days, `MAX_BACKFILL_DAILY_ROWS`, `MAX_HISTORY_OBS`, and `MAX_HISTORY_DAILY`
+are 2750, and the byte caps are unchanged at 5 MiB. The web daily row cap in
+`build-data.mjs` reads 2750, while `MAX_CHART_POINTS` and `MAX_TABLE_ROWS` stay
+at 2000 by contract.
+
 ### Relevant Equations
 | Equation | Description | Variables |
 |----------|-------------|-----------|

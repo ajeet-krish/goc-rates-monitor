@@ -68,7 +68,7 @@ def fetch_fred_series(
     Optional observation_start and observation_end bound the upstream
     window as strict ISO dates. Optional limit caps the returned rows and
     is bounded by MAX_HISTORY_OBS so the 254 print backtest stays within
-    the 2000 row cap. Optional sort_order is asc or desc.
+    the observation cap. Optional sort_order is asc or desc.
     """
     cleaned = series_id.strip()
     if not FRED_ID_PATTERN.match(cleaned):

@@ -1,5 +1,5 @@
 {
-  "checked_utc": "2026-11-04T13:20:15+00:00",
+  "checked_utc": "2026-11-05T18:20:53+00:00",
   "checks": [
     {
       "detail": "canonical JSON round trip succeeded",
@@ -57,12 +57,12 @@
       "passed": true
     },
     {
-      "detail": "max age 1 business days (unit: business_days)",
+      "detail": "max age 0 business days (unit: business_days)",
       "id": "V12",
       "passed": true
     },
     {
-      "detail": "bootstrap curve stored worst 0.6272 bp within 1.0 bp (unit: bp)",
+      "detail": "bootstrap curve stored worst 0.9617 bp within 1.0 bp (unit: bp)",
       "id": "V13",
       "passed": true
     },
@@ -82,12 +82,12 @@
       "passed": true
     },
     {
-      "detail": "bootstrap carry diff 0.0000 bp within 1.0 bp, long zero diff 0.0000 bp, rolled zero diff 0.0000 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 98.4693, duration 4.4312 years, DV01 436.34 per million; unit: mixed)",
+      "detail": "bootstrap carry diff 0.0000 bp within 1.0 bp, long zero diff 0.0000 bp, rolled zero diff 0.0000 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 98.3376, duration 4.4274 years, DV01 435.38 per million; unit: mixed)",
       "id": "V17",
       "passed": true
     },
     {
-      "detail": "backtest 2s10s_z252_meanrev_v1 with 534 obs, next day recompute diff 0.0000 bp (unit: bp)",
+      "detail": "backtest 2s10s_z252_meanrev_v1 with 535 obs, next day recompute diff 0.0000 bp (unit: bp)",
       "id": "V18",
       "passed": true
     },
@@ -122,7 +122,7 @@
       "passed": true
     },
     {
-      "detail": "solver worst 0.6272 bp within 1.0 bp (anchors 0.0000 bp, zeros 0.0000 bp, reprice 0.6272 bp, yield agreement 0.0000 bp; unit: bp)",
+      "detail": "solver worst 0.9617 bp within 1.0 bp (anchors 0.0000 bp, zeros 0.0000 bp, reprice 0.9617 bp, yield agreement 0.0000 bp; unit: bp)",
       "id": "V25",
       "passed": true
     }
@@ -130,7 +130,7 @@
   "failed_count": 0,
   "passed": true,
   "passed_count": 25,
-  "snapshot_sha256": "45e51eeaf40dafde5e9dc1b038f213880b110bfdb51cb2a23c11d9c22f516d90",
+  "snapshot_sha256": "52c4bf3dab78ca4d59958e9d0d117d3b90753ece353a8cade4c2197b3ca12249",
   "tolerance_bp": 1.0,
   "tolerance_unit": "basis_points"
 }

@@ -8,6 +8,7 @@ import {
   validateVerify,
   ValidationError,
   EXPECTED_VERIFY_IDS,
+  MAX_HISTORY_OBS,
 } from "../src/lib/validate.ts";
 import { CHECK_FAMILIES } from "../src/lib/methods-content.ts";
 import { mockSnapshot, mockVerify, MOCK_DATE } from "../src/lib/fixtures/mock-snapshot.ts";
@@ -21,16 +22,20 @@ function goodSnapshot() {
 }
 
 describe("phase5 lows: history caps, both true gates, calendar nullness", () => {
-  it("rejects history_count over 2000", () => {
+  it("rejects history_count over the observation cap", () => {
     const doc = goodSnapshot();
-    doc.observations.breaks.records[0].history_count = 2001;
-    assert.throws(() => validateSnapshot(doc, MOCK_DATE), /2000/);
+    doc.observations.breaks.records[0].history_count = MAX_HISTORY_OBS + 1;
+    assert.throws(() => validateSnapshot(doc, MOCK_DATE), new RegExp(String(MAX_HISTORY_OBS)));
   });
 
-  it("accepts history_count at exactly 2000", () => {
+  it("accepts history_count at exactly the observation cap", () => {
     const doc = goodSnapshot();
-    doc.observations.breaks.records[0].history_count = 2000;
+    doc.observations.breaks.records[0].history_count = MAX_HISTORY_OBS;
     assert.doesNotThrow(() => validateSnapshot(doc, MOCK_DATE));
+  });
+
+  it("pins MAX_HISTORY_OBS at 2750 beside the parameterized history_count gates", () => {
+    assert.equal(MAX_HISTORY_OBS, 2750);
   });
 
   it("rejects a boolean history_count without coercion", () => {

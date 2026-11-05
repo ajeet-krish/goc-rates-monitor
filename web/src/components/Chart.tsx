@@ -30,6 +30,11 @@ interface BuiltData {
  * collection caps (spreads and backtest at 2000 observations).
  */
 export const MAX_CHART_SERIES = 16;
+/**
+ * Phase 8.4 aggregation contract: the render path must keep every series
+ * at or below 2000 points at Max range over 2750 daily rows, so this cap
+ * stays fixed while the history caps are raised to 10 years.
+ */
 export const MAX_CHART_POINTS = 2000;
 
 function toData(series: Props["series"]): BuiltData {

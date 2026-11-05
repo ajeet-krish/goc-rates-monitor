@@ -58,8 +58,10 @@ from goc_rates.live_snapshot import (
     resolve_target_date,
 )
 from goc_rates.snapshot import atomic_write_text, canonical_dumps, sha256_text
+from goc_rates.verify import MIN_SECRET_KEY_SCAN_LENGTH
 
-FRED_LOOKBACK_DAYS = 2190  # unit: days, about 6 years of daily DGS prints
+FRED_LOOKBACK_DAYS = 3653  # unit: days, about 10 calendar years including leap days
+VALET_LOOKBACK_DAYS = 3653  # unit: days, about 10 calendar years including leap days
 CPI_INDEX_MONTHS_KEPT = MAX_BACKFILL_CPI_MONTHS + 1  # unit: months, 61 index months give 60 cores
 
 
@@ -334,12 +336,14 @@ def run_backfill(
     }
     warnings: list[str] = []
     exclusions: list[dict[str, str]] = []
+    valet_start = (asof_day - dt.timedelta(days=VALET_LOOKBACK_DAYS)).isoformat()
     with BaseClient() as client:
         try:
             valet_by_series = fetch_valet_group(
                 VALET_GROUP,
                 client,
                 expected_labels=expected_labels,
+                start_date=valet_start,
                 recent_limit=MAX_HISTORY_OBS,
             )
         except Exception as exc:
@@ -465,6 +469,10 @@ def run_backfill(
 
     text = canonical_dumps(document)
     if "api_key=" in text:
+        print("backfill failed: artifact must not contain API key material", file=sys.stderr)
+        return 1
+    key = api_key.strip() if isinstance(api_key, str) else ""
+    if len(key) >= MIN_SECRET_KEY_SCAN_LENGTH and key in text:
         print("backfill failed: artifact must not contain API key material", file=sys.stderr)
         return 1
     try:

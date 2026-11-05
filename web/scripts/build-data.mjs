@@ -17,9 +17,13 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-const MAX_HISTORY_DAILY = 1250;
+const MAX_HISTORY_DAILY = 2750;
 const MAX_HISTORY_CPI = 60;
 const MAX_HISTORY_BYTES = 5 * 1024 * 1024;
+const MAX_BOUNDED_DEPTH = 3;
+const MAX_BOUNDED_ENTRIES = 64;
+const MAX_BOUNDED_STRING = 2048;
+const PRINT_WINDOW_DAYS = 7; // unit: days, earliest sealed backfill print minus this bounds a settlement
 const HISTORY_METHOD = "history_merge_v1";
 const VERIFIED_SOURCE = "derived:history_verified_v1";
 const BACKFILL_SOURCE = "derived:backfill_v1";
@@ -50,6 +54,12 @@ function isRealIsoDate(text) {
   const parsed = new Date(text + "T00:00:00Z");
   if (Number.isNaN(parsed.getTime())) return false;
   return parsed.toISOString().slice(0, 10) === text;
+}
+
+/** Calendar date a fixed number of days before a validated strict ISO date. */
+function isoDaysBefore(dateText, days) {
+  const ms = Date.parse(dateText + "T00:00:00Z") - days * 24 * 60 * 60 * 1000;
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 function fail(message) {
@@ -250,6 +260,50 @@ function validateBackfillDoc(doc) {
   if (new Set(seenMonths).size !== seenMonths.length) fail("backfill.json cpi months must be unique");
 }
 
+/**
+ * Bounded shape check for history fields copied verbatim from backfill.json.
+ *
+ * exclusions and provenance publish straight into history.json, so they take
+ * the caps validateSnapshot applies to snapshot provenance: nesting depth
+ * MAX_BOUNDED_DEPTH, MAX_BOUNDED_ENTRIES per array or object, and
+ * MAX_BOUNDED_STRING characters per string. Any violation fails closed
+ * before publish.
+ *
+ * @param {unknown} value field value to check.
+ * @param {string} path error path label.
+ * @param {number} depth current nesting depth, zero at the field root.
+ */
+function assertBoundedField(value, path, depth) {
+  if (depth > MAX_BOUNDED_DEPTH) {
+    fail(path + " exceeds the " + MAX_BOUNDED_DEPTH + " level depth cap: refusing to publish");
+  }
+  if (typeof value === "string") {
+    if (value.length > MAX_BOUNDED_STRING) {
+      fail(path + " exceeds the " + MAX_BOUNDED_STRING + " character cap: refusing to publish");
+    }
+    return;
+  }
+  if (value === null || typeof value === "number" || typeof value === "boolean") return;
+  if (Array.isArray(value)) {
+    if (value.length > MAX_BOUNDED_ENTRIES) {
+      fail(path + " exceeds the " + MAX_BOUNDED_ENTRIES + " entry cap: refusing to publish");
+    }
+    value.forEach((item, i) => assertBoundedField(item, path + "[" + i + "]", depth + 1));
+    return;
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value);
+    if (keys.length > MAX_BOUNDED_ENTRIES) {
+      fail(path + " exceeds the " + MAX_BOUNDED_ENTRIES + " entry cap: refusing to publish");
+    }
+    for (const key of keys) {
+      assertBoundedField(value[key], path + "." + key, depth + 1);
+    }
+    return;
+  }
+  fail(path + " has unsupported type " + typeof value + ": refusing to publish");
+}
+
 function snapshotYields(snapshotDoc, date) {
   const benchmarks = snapshotDoc?.observations?.benchmarks;
   if (typeof benchmarks !== "object" || benchmarks === null) return null;
@@ -273,7 +327,16 @@ function snapshotSpreads(snapshotDoc) {
       if (typeof record?.spread_bp !== "number" || !Number.isFinite(record.spread_bp)) continue;
       byTenor[record.tenor] = record.spread_bp;
     }
-    return { status: "ok", byTenor };
+    // status ok needs exactly the four tenor spreads that validateHistory
+    // checks at load, so an ok section with fewer finite tenor records maps
+    // to the partial or missing rule instead of publishing ok with nulls.
+    let present = 0;
+    for (const tenor of TENORS) {
+      if (Number.isFinite(byTenor[tenor])) present += 1;
+    }
+    if (present === 4) return { status: "ok", byTenor };
+    if (present > 0) return { status: "partial", byTenor };
+    return { status: "missing", byTenor: {} };
   }
   return { status: "missing", byTenor: {} };
 }
@@ -297,6 +360,50 @@ function snapshotBreaksFlags(snapshotDoc) {
   return { byTenor, anySwitch, anyGap };
 }
 
+/**
+ * Valet print date for a staged snapshot, taken from curve.settlement_date.
+ *
+ * The daily workflow can run before BoC publishes that day's yields, so a
+ * snapshot labeled D may carry the previous business day's print. History
+ * rows must be dated by the print date, never by the snapshot label. A
+ * settlement that is missing, not a strict ISO date, later than the label,
+ * or earlier than the sealed backfill print window would misdate or corrupt
+ * the merged history, so the build fails closed.
+ *
+ * Callers only reach this helper for snapshots that still merge benchmark
+ * yields. Snapshots without yields never enter history and keep the existing
+ * sparse degradation path, which skips them before this check.
+ *
+ * @param {{ date: string, snapshotDoc: Record<string, any> }} item staged snapshot.
+ * @param {string | null} minPrintDate earliest allowed print date, the first
+ *   sealed backfill row date minus PRINT_WINDOW_DAYS, or null when the
+ *   backfill carries no daily rows and no lower bound applies.
+ * @returns {string} the strict ISO print date, inside the allowed window.
+ */
+function snapshotPrintDate(item, minPrintDate) {
+  const settlement = item.snapshotDoc?.observations?.curve?.settlement_date;
+  if (typeof settlement !== "string" || !isRealIsoDate(settlement)) {
+    fail(
+      "snapshot.json for " + item.date + " has curve.settlement_date " +
+        JSON.stringify(settlement ?? null) + ": refusing to publish"
+    );
+  }
+  if (settlement > item.date) {
+    fail(
+      "snapshot.json for " + item.date + " has curve.settlement_date " + settlement +
+        " later than the snapshot date: refusing to publish"
+    );
+  }
+  if (minPrintDate !== null && settlement < minPrintDate) {
+    fail(
+      "snapshot.json for " + item.date + " has curve.settlement_date " + settlement +
+        " earlier than the sealed backfill print window start " + minPrintDate +
+        ": refusing to publish"
+    );
+  }
+  return settlement;
+}
+
 function buildVerifiedDaily(date, yields, spreadsInfo, breaksFlags, snapshotDigest, switchFallback, calendarFallback) {
   const slopes = {};
   for (const key of SLOPE_KEYS) {
@@ -308,7 +415,9 @@ function buildVerifiedDaily(date, yields, spreadsInfo, breaksFlags, snapshotDige
     const v = spreadsInfo.byTenor[tenor];
     spreads[tenor] = typeof v === "number" && Number.isFinite(v) ? v : null;
   }
-  const status = spreadsInfo.status === "ok" ? "ok" : "missing";
+  // snapshotSpreads only returns ok with four finite tenor spreads, partial
+  // with one to three, and missing with none, so the status passes through.
+  const status = spreadsInfo.status;
   const byTenor = breaksFlags.anySwitch || breaksFlags.anyGap ? breaksFlags.byTenor : (switchFallback ?? breaksFlags.byTenor);
   const switchFlag = TENORS.some((t) => byTenor[t]);
   const gapFlag = breaksFlags.anyGap || (calendarFallback ?? false);
@@ -449,11 +558,41 @@ async function main() {
   }
   validateBackfillDoc(backfillDoc);
 
+  // exclusions and provenance copy verbatim into published history.json, so
+  // they take the bounded shape check before anything is written: top level
+  // types first, then depth, entry, and string caps.
+  const historyExclusions = backfillDoc.exclusions ?? [];
+  const historyProvenance = backfillDoc.provenance ?? {};
+  if (!Array.isArray(historyExclusions)) {
+    fail("backfill.json exclusions must be an array: refusing to publish");
+  }
+  if (
+    typeof historyProvenance !== "object" ||
+    historyProvenance === null ||
+    Array.isArray(historyProvenance)
+  ) {
+    fail("backfill.json provenance must be an object: refusing to publish");
+  }
+  assertBoundedField(historyExclusions, "backfill.json exclusions", 0);
+  assertBoundedField(historyProvenance, "backfill.json provenance", 0);
+
+  // Lower bound for a staged settlement: a crafted print date (for example
+  // 0001-01-01) must not merge a row far outside the sealed history window.
+  // The bound is the earliest sealed backfill row date minus the print
+  // window, and it is skipped when the backfill carries no daily rows.
+  const minPrintDate =
+    backfillDoc.daily.length > 0
+      ? isoDaysBefore(backfillDoc.daily[0].date, PRINT_WINDOW_DAYS)
+      : null;
+
   const dailyByDate = new Map();
   for (const row of backfillDoc.daily) dailyByDate.set(row.date, row);
   const cpiByMonth = new Map();
   for (const row of backfillDoc.cpi) cpiByMonth.set(row.month, row);
 
+  // Staged items arrive in ascending snapshot label order (sorted above).
+  // Each verified row is dated by the Valet print date (curve.settlement_date)
+  // because a stale snapshot can label a day whose yields were printed earlier.
   for (const item of staged) {
     const yields = snapshotYields(item.snapshotDoc, item.date);
     if (yields === null) {
@@ -462,31 +601,90 @@ async function main() {
     if (item.verifyPassed !== true) {
       continue;
     }
-    const existing = dailyByDate.get(item.date);
+    const printDate = snapshotPrintDate(item, minPrintDate);
+    if (printDate !== item.date) {
+      console.warn(
+        "build-data: snapshot " + item.date + " settles on " + printDate +
+          "; merging verified history under the print date"
+      );
+    }
+    const spreadsInfo = snapshotSpreads(item.snapshotDoc);
+    const existing = dailyByDate.get(printDate);
     if (existing) {
+      const counterpart = existing.source === VERIFIED_SOURCE ? "snapshot" : "backfill";
       for (const tenor of TENORS) {
         const diffBp = Math.abs(yields[tenor] - existing.yields_percent[tenor]) * 100;
         if (diffBp > 1.0 + 1e-9) {
           fail(
-            "history overlap conflict on " + item.date + " tenor " + tenor +
-              " beyond 1.0 bp (snapshot " + yields[tenor] + " versus backfill " +
+            "history overlap conflict on " + printDate + " tenor " + tenor +
+              " beyond 1.0 bp (snapshot " + yields[tenor] + " versus " + counterpart + " " +
               existing.yields_percent[tenor] + "): refusing to publish"
           );
         }
+        const existingSpread = existing.spreads_bp[tenor];
+        const incomingSpread = spreadsInfo.byTenor[tenor];
+        if (Number.isFinite(existingSpread) && Number.isFinite(incomingSpread)) {
+          const spreadDiffBp = Math.abs(existingSpread - incomingSpread);
+          if (spreadDiffBp > 1.0 + 1e-9) {
+            fail(
+              "history overlap conflict on " + printDate + " spread tenor " + tenor +
+                " beyond 1.0 bp (snapshot " + incomingSpread + " versus " + counterpart + " " +
+                existingSpread + "): refusing to publish"
+            );
+          }
+        }
+      }
+      // Spreads arbitration extends the yields rule: per tenor values compare
+      // within 1.0 bp where both rows carry a finite spread, and spreads_status
+      // must match when both rows carry spreads (ok or partial), otherwise the
+      // build fails closed. A missing side never fails the comparison, so a
+      // snapshot that adds spreads to a spreadless backfill row still merges.
+      const existingStatus = existing.spreads_status;
+      const existingCarriesSpreads = existingStatus === "ok" || existingStatus === "partial";
+      const incomingCarriesSpreads =
+        spreadsInfo.status === "ok" || spreadsInfo.status === "partial";
+      if (
+        existingCarriesSpreads &&
+        incomingCarriesSpreads &&
+        existingStatus !== spreadsInfo.status
+      ) {
+        fail(
+          "history overlap conflict on " + printDate + " spreads_status " + existingStatus +
+            " versus snapshot " + spreadsInfo.status + ": refusing to publish"
+        );
       }
     }
-    const spreadsInfo = snapshotSpreads(item.snapshotDoc);
-    const breaksFlags = snapshotBreaksFlags(item.snapshotDoc);
-    const verified = buildVerifiedDaily(
-      item.date,
-      yields,
-      spreadsInfo,
-      breaksFlags,
-      item.digest,
-      existing?.switch_by_tenor,
-      existing?.calendar_gap
-    );
-    dailyByDate.set(item.date, verified);
+    const existingVerified =
+      existing !== undefined &&
+      existing.source === VERIFIED_SOURCE &&
+      typeof existing.snapshot_sha256 === "string";
+    if (existingVerified) {
+      // Two snapshots can resolve to the same print date, for example a stale
+      // snapshot labeled 2026-11-02 with settlement 2026-10-30 sitting next to
+      // the real 2026-10-30 snapshot. Staged items run in ascending label
+      // order, so the first writer wins: keeping its row keeps the row digest
+      // stable and ties the row to the snapshot whose label matches the print
+      // date. The overlap check above already failed closed when the second
+      // snapshot disagrees beyond 1.0 bp on yields or spreads, or carries a
+      // different spreads_status while both rows carry spreads, so agreement
+      // here means the row stays untouched.
+      console.warn(
+        "build-data: snapshot " + item.date + " shares print date " + printDate +
+          " with an already merged snapshot; keeping the existing verified row"
+      );
+    } else {
+      const breaksFlags = snapshotBreaksFlags(item.snapshotDoc);
+      const verified = buildVerifiedDaily(
+        printDate,
+        yields,
+        spreadsInfo,
+        breaksFlags,
+        item.digest,
+        existing?.switch_by_tenor,
+        existing?.calendar_gap
+      );
+      dailyByDate.set(printDate, verified);
+    }
     const inflationHistory = item.snapshotDoc?.observations?.inflation?.history;
     if (Array.isArray(inflationHistory)) {
       for (const snapRow of inflationHistory) {
@@ -501,6 +699,18 @@ async function main() {
             fail(
               "history CPI overlap conflict on " + month + " beyond 0.01 pp: refusing to publish"
             );
+          }
+          // CPI mirrors the daily first writer rule: after the 0.01 pp
+          // agreement check, a verified CPI row that already owns the month
+          // keeps its values, digest, and snapshot link, and the later
+          // snapshot is skipped. A backfill month (verified false) still
+          // takes the verified overwrite.
+          if (existingCpi.verified === true) {
+            console.warn(
+              "build-data: snapshot " + item.date + " shares CPI month " + month +
+                " with an already merged snapshot; keeping the existing verified row"
+            );
+            continue;
           }
         }
         if (typeof snapRow.trim_mom_percent !== "number" || typeof snapRow.median_mom_percent !== "number") continue;
@@ -592,7 +802,7 @@ async function main() {
   const historyDoc = {
     cpi: mergedCpi,
     daily: cappedDaily,
-    exclusions: backfillDoc.exclusions ?? [],
+    exclusions: historyExclusions,
     metadata: {
       asof: staged.length > 0 ? staged[staged.length - 1].date : backfillDoc.metadata.asof,
       cpi_count: mergedCpi.length,
@@ -602,7 +812,7 @@ async function main() {
       method: HISTORY_METHOD,
       schema_version: 1,
     },
-    provenance: backfillDoc.provenance ?? {},
+    provenance: historyProvenance,
   };
   const historyText = canonicalText(historyDoc);
   if (Buffer.byteLength(historyText, "utf8") > MAX_HISTORY_BYTES) {

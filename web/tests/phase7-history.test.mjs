@@ -275,6 +275,7 @@ describe("build-data history merge fails closed", () => {
           "10Y": { valet_label: "10Y", valet: { value: 3.78, unit: "percent", quality: "observed", source_id: "valet:BD.CDN.10YR.DQ.YLD" } },
           "30Y": { valet_label: "30Y", valet: { value: 4.11, unit: "percent", quality: "observed", source_id: "valet:BD.CDN.LONG.DQ.YLD" } },
         },
+        curve: { settlement_date: "2026-10-30" },
       },
       provenance: {
         valet: { source_url: "https://example.com/valet", retrieved_utc: "2026-10-31T00:00:00Z", vintage: "2026-10-30" },
@@ -363,6 +364,7 @@ describe("build-data history merge fails closed", () => {
           "10Y": { valet_label: "10Y", valet: { value: 3.78, unit: "percent", quality: "observed", source_id: "valet:BD.CDN.10YR.DQ.YLD" } },
           "30Y": { valet_label: "30Y", valet: { value: 4.11, unit: "percent", quality: "observed", source_id: "valet:BD.CDN.LONG.DQ.YLD" } },
         },
+        curve: { settlement_date: "2026-10-30" },
         inflation: {
           history: [
             {
@@ -502,7 +504,7 @@ describe("validateHistory closed sets and recompute", () => {
   });
 
   it("pins history caps", () => {
-    assert.equal(MAX_HISTORY_DAILY, 1250);
+    assert.equal(MAX_HISTORY_DAILY, 2750);
     assert.equal(MAX_HISTORY_CPI, 60);
   });
 

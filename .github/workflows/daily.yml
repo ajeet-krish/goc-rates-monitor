@@ -2,7 +2,15 @@ name: daily
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    # The Bank of Canada publishes day D benchmark bond yields at 10:00 EST
+    # on D+1, which is 15:00 UTC, so any run before 15:00 UTC resolves to
+    # D-1 and labels that stale print as D. This cron runs weekdays only at
+    # 16:30 UTC (11:30 EST, 12:30 EDT), after the 15:00 UTC publication with
+    # margin for GitHub scheduler delays, since observed run times drift by
+    # up to about half an hour. Weekend runs do not happen, and the resolve
+    # step computes the previous joint business day, so Monday's run targets
+    # Friday, whose print is published Monday morning before 16:30 UTC.
+    - cron: "30 16 * * 1-5"
   workflow_dispatch:
     inputs:
       snapshot_date:
@@ -50,6 +58,70 @@ jobs:
         env:
           TZ: America/Toronto
           DATE_INPUT: ${{ inputs.snapshot_date }}
+      - id: wait_for_print
+        run: |
+          set -euo pipefail
+          DATE="$SNAPSHOT_DATE"
+          POLL_INTERVAL_SECONDS=300
+          POLL_DEADLINE_SECONDS=2700
+          deadline=$((SECONDS + POLL_DEADLINE_SECONDS))
+          attempt=0
+          echo "polling Valet for the benchmark print on $DATE"
+          while :; do
+            attempt=$((attempt + 1))
+            if uv run python - <<'PY'
+          import os
+          import sys
+
+          from goc_rates.clients.base import BaseClient
+          from goc_rates.clients.valet import VALET_GROUP, fetch_valet_group
+          from goc_rates.config import load_benchmark_map
+
+          target_date = os.environ["SNAPSHOT_DATE"]
+          benchmark_map = load_benchmark_map("config/benchmark_map.yaml")
+          try:
+              with BaseClient() as client:
+                  groups = fetch_valet_group(
+                      VALET_GROUP,
+                      client,
+                      start_date=target_date,
+                      end_date=target_date,
+                  )
+          except Exception as exc:
+              print(f"valet poll attempt failed: {exc}", file=sys.stderr)
+              sys.exit(1)
+          problems = []
+          for tenor, entry in benchmark_map.benchmarks.items():
+              rows = [
+                  row
+                  for row in groups.get(entry.valet_series_id, [])
+                  if row.observation_date == target_date
+              ]
+              if not rows:
+                  problems.append(f"{tenor}: no observation for {target_date}")
+                  continue
+              quantity = rows[0].quantity
+              if quantity.get("quality") != "observed" or quantity.get("value") is None:
+                  problems.append(f"{tenor}: value not observed")
+          if problems:
+              print("incomplete print for " + target_date + ": " + "; ".join(problems))
+              sys.exit(1)
+          print("complete print for " + target_date + " observed for all tenors")
+          PY
+            then
+              echo "print for $DATE confirmed on attempt $attempt"
+              exit 0
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              break
+            fi
+            echo "attempt $attempt: print for $DATE not yet complete, retrying in $POLL_INTERVAL_SECONDS seconds"
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
+          echo "BoC print for $DATE not yet published after the 45 minute poll window; not snapshotting stale data"
+          exit 1
+        env:
+          SNAPSHOT_DATE: ${{ steps.resolve.outputs.date }}
       - id: fetch
         run: |
           set -euo pipefail
@@ -71,7 +143,7 @@ jobs:
           test -f "snapshots/$DATE/snapshot.json"
           test -f "snapshots/$DATE/verify.json"
           grep_status=0
-          grep -ri "mock" "snapshots/$DATE/snapshot.json" "snapshots/$DATE/verify.json" || grep_status=$?
+          grep -ri "mock" "snapshots/$DATE/snapshot.json" "snapshots/$DATE/verify.json" "web/public/data/history.json" || grep_status=$?
           if [ "$grep_status" -eq 0 ]; then echo "mock marker found, refusing to publish"; exit 1; fi
           if [ "$grep_status" -ne 1 ]; then echo "mock scan failed with status $grep_status"; exit 1; fi
         env:
@@ -131,7 +203,7 @@ jobs:
           test -f "dist/data/$EXPECTED_DATE/snapshot.json"
           test -f "dist/data/$EXPECTED_DATE/verify.json"
           grep_status=0
-          grep -ri "mock" "dist/data/$EXPECTED_DATE/snapshot.json" "dist/data/$EXPECTED_DATE/verify.json" dist/index.html || grep_status=$?
+          grep -ri "mock" "dist/data/$EXPECTED_DATE/snapshot.json" "dist/data/$EXPECTED_DATE/verify.json" dist/data/history.json dist/index.html || grep_status=$?
           if [ "$grep_status" -eq 0 ]; then echo "mock marker found in dist, refusing to publish"; exit 1; fi
           if [ "$grep_status" -ne 1 ]; then echo "mock scan failed with status $grep_status"; exit 1; fi
           echo "build gates passed for $EXPECTED_DATE"
