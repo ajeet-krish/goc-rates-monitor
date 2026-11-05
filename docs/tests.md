@@ -1,6 +1,29 @@
 # GoC Test Results
 
-Last updated: 2026-11-02
+Last updated: 2026-11-05
+
+## 2026-11-05 - Phase 8 Phase 1: Test Report
+
+Phase 8 Phase 1 merged history overflow fix coverage in
+`web/tests/phase8-overflow.test.mjs` (13 tests total: 9 unit plus
+4 sandbox integration, 2 of them new for the real CI failure shape).
+Run with `npm test`, `npm run typecheck`, and `node scripts/build-data.mjs`
+in `/Users/ajeet/Projects/goc-rates-monitor/web`.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| npm test web (222 passed) | PASS | 37 suites, 0 fail, 220 prior plus 2 new overflow integration cases |
+| applyOverflowPolicy unit group (9 tests) | PASS | 1251 and 1252 trim, verified fail closed, passthrough, ordering, cap, sort, duplicate, and date type preconditions |
+| build-data integration group (4 tests) | PASS | 1251 trim, zero trim, 1252 real CI shape, verified only fail closed |
+| 1252 merged rows real CI shape (new) | PASS | Backfill 1250 ending 2026-10-30 plus snapshots 2026-10-30 overlap, 2026-11-02, 2026-11-03 exits 0 with trimmed 2, history.json 1250 rows, oldest two backfill dates dropped, tail 2026-10-30 plus 2026-11-02 plus 2026-11-03 verified with matching digests, validateHistory passes, index trimmed_backfilled_count 2 |
+| verified only cap exceed fail closed (new) | PASS | 1251 verified snapshot dates plus 2 backfill rows exits 1 with "verified daily rows 1251 alone exceed the 1250 cap: refusing to publish", stdout has no published line, sandbox outDir never created with zero output files |
+| npm run typecheck | PASS | tsc noEmit clean, exit 0 |
+| node scripts/build-data.mjs (real repo) | PASS | Exit 0, stderr "trimmed 2 oldest backfilled daily row(s) to stay within the 1250 cap", published 3 date(s) plus history |
+| real published history.json | PASS | 1250 daily rows, first 2021-10-27, tail 2026-10-30, 2026-11-02, 2026-11-03, 3 verified rows, index trimmed_backfilled_count 2 |
+
+Coverage summary: 222 passed (web), 0 failed. Happy path covered (1251 and 1252 trims exit 0 with counts recorded, real repo build publishes the capped history). Edge cases covered (exactly at cap passthrough, overlap date 2026-10-30 replaced by verified with zero yield drift, ordering and duplicate date preconditions). Error conditions covered (verified rows alone over cap fails closed in unit and sandbox runs with no output files written, non positive and fractional caps, unsorted and duplicate and non string dates).
+
+Failure analysis: no product code defects found. Both new integration tests passed on the first run. The fail closed case writes 1251 snapshot triples to the sandbox before the build, so it takes about 600 to 850 ms; this is the exact real CI failure shape (verified rows alone over the 1250 cap) and nothing was fixed in product code for this phase.
 
 ## 2026-11-02 - Phase 6 V24 V25: Test Report
 

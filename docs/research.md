@@ -1,6 +1,6 @@
 # GoC Rates Monitor Research Notes
 
-Last updated: 2026-11-01
+Last updated: 2026-11-05
 
 ## 2026-11-01 - Phase 1 Foundation: Valet, FRED, StatCan, calendars, bill math
 
@@ -475,3 +475,105 @@ batch after North American close, T+1 lags, no tick data, no order book).
 - [x] Practical implications are actionable
 - [x] All sources cited
 - [x] Research supports phase architecture decisions
+
+## 2026-11-05 - Backfill depth: Valet, FRED, StatCan bulk, long window caps and analysis conventions
+
+Question: how far back can the joint Canada plus US daily history and the CPI month history
+actually go, which upstream and local caps bound an extension of the Phase 7 backfill, what is
+standard practice for multi year rate analysis (percentiles, regime shading, rolling returns,
+drawdown, inversion frequency), and what does the static artifact weigh at 5, 10 and 20 years.
+All source probes below were live on 2026-11-05.
+
+### Key Findings
+| Finding | Source | Confidence | Application |
+|---------|--------|------------|-------------|
+| Valet group `bond_yields_benchmark` starts 2001-01-02: windows 1900-01-01..1990-12-31 and 1991-01-01..1994-12-31 return zero observations, the 1995-01-01..2004-12-31 window returns its first row at 2001-01-02, and the single series `BD.CDN.10YR.DQ.YLD` for 1950-01-01..2000-12-31 is empty | Live Valet group and series probes | High | Hard ceiling for joint Canada plus US history is about 26 years, never deeper without a different Canadian source |
+| One unbounded group request (`start_date=1950-01-01&end_date=2026-11-05`) returns 6,461 observations, 3,874,616 bytes, 978 ms, first 2001-01-02, last 2026-11-03 | Live Valet fetch | High | Fits local `MAX_OBSERVATIONS` 10,000 and `MAX_RESPONSE_BYTES` 10 MB with 2.6x headroom, no pagination exists and none is needed |
+| Valet publishes no numeric request limit; the how-to asks callers to start slow during peak times, retry with back-off, and cache daily data; no registration or key | BoC Valet API how-to, section Request limits | High | `BaseClient` 3 attempts with 0.5/1/2 s back-off and 15 s timeout is already within the guidance |
+| FRED `series/observations` accepts `limit` 1 to 100000 (default 100000) plus `offset` pagination; rate limit is 120 requests per minute per key, over which returns 429 with risk of temporary block | FRED API observations doc; FRED API errors doc (429 text) | High | Each DGS series fits in one request; four requests per run is far below the throttle |
+| Start dates: DGS2 1976-06-01 (13,136 observations to 2026-10-06), DGS5 1962-01-02, DGS10 1962-01-02, DGS30 1977-02-15 with the series discontinued 2002-02-18 and reintroduced 2006-02-09 | Federal Reserve H.15 Data Download Program review table; FRED DGS30 data page notes | High | US leg is far deeper than the Canadian leg, and the 30-year gap forces a multi-year `spreads_status` of partial or missing on the 30Y tenor |
+| Current code bounds: `FRED_LOOKBACK_DAYS` 2190 (about 6 years), FRED and Valet `limit` or `recent_limit` at `MAX_HISTORY_OBS` 2000, CA history trimmed by `_trim_recent(..., MAX_BACKFILL_DAILY_ROWS)` 1250, joint rows capped at 1250 with minimum 250 | `src/goc_rates/backfill.py`, `src/goc_rates/limits.py` | High | Both the 2000 observation cap and the 1250 row cap bind today, upstream fetch already returns full Valet history before trimming |
+| StatCan cube starts (WDS `getCubeMetadata`): 18-10-0004-01 1914-01-01 with 2,139 series and 1,154,918 points; 18-10-0006-01 SA 1992-01-01 with 11 series; 18-10-0007-01 weights 1986-01-01 with 5,136 series and 78,014 points; 18-10-0256-01 core 1949-01-01 with 13 series; 18-10-0259-01 vintages 1989-01-01 with 565 series | StatCan WDS live, 2026-11-05 | High | Bulk depth is not the binding constraint for CPI, local caps and weight vintages are |
+| Sampled component vectors 41690973, 41690976, 41690978, 41691027 each carry 1,353 monthly points from 1914-01 to 2026-09 | WDS `getDataFromVectorsAndLatestNPeriods` live | High | The 60 month window is a local choice, not a data limit; the shared consecutive intersection can run far longer |
+| Trim and median index series in 18-10-0256-01 are labelled `(index, 198901=100)`, so published validation anchors exist only from 1989-01; weight vintages only exist from 1986-01 | WDS cube metadata and dimension member names | High | Any CPI extension beyond 1989 has no published cross-check, and beyond 1986 has no period-correct basket weights |
+| WDS service limits: 50 requests per second server wide, 25 per individual IP, and HTTP 409 from midnight to 08:30 EST while tables refresh; WDS is explicitly not meant for large extracts (bulk CSV or SDMX for that) | StatCan WDS user guide | High | Keep the zip bulk path with the local 256 MB member caps, do not switch to per-vector WDS calls for backfill |
+| Local CPI caps: `MAX_BACKFILL_CPI_MONTHS` 60, `CPI_INDEX_MONTHS_KEPT` 61, `MAX_CPI_MONTHS` 240 component months, `MAX_BACKFILL_BYTES` 5 MB; shared months must be strictly consecutive or the build fails closed | `limits.py`, `backfill.py` `_cpi_inputs` and `build_cpi_rows` | High | Extending CPI needs cap changes plus a period-correct weight vintage strategy, the consecutive rule stays |
+| Web caps: `build-data.mjs` 1250 daily, 60 CPI, 5 MB history; `Chart.tsx` 2000 points per series and 16 series; `DataTable.tsx` 2000 rows; `snapshot.ts` 5 MB per fetched JSON; `phase7-terminal.test.mjs` asserts these constants as drift guards | `web/scripts/build-data.mjs`, `web/src/components/Chart.tsx`, `web/src/components/DataTable.tsx`, `web/src/lib/snapshot.ts` | High | The 2000 point chart cap trips at about 8 years, before any byte cap; cap changes must update the drift tests |
+| Measured volume: `history/backfill.json` is 1,308,994 bytes for 1,250 daily rows plus 60 CPI rows, which is about 1,020 bytes per daily row and 249 joint rows per year (first daily row 2021-10-25, asof 2026-10-30) | `history/backfill-manifest.json`, artifact row counts | High | Projections: 10y about 2.55 MB, 20y about 5.08 MB, 26y ceiling about 6.6 MB |
+| The full H.15 Treasury constant maturity package (all observations) is a 984.4 KB CSV, and FRED DGS10 full history is about 16,900 daily rows | Fed H.15 Data Download Program review page | Medium | Raw US data volume is trivial, the project's own derived row shape dominates artifact size |
+| Standard regime shading convention is NBER recession shading as published by FRED (lighter shading while a recession is ongoing, monthly turning points drawn as daily), with policy cycle markers taken from official decision tables | FRED help page on recession bars; NBER business cycle dating; BoC policy interest rate table (date, target, change, effective day after announcement since 2021) | High | Regime bands for hiking and cutting cycles come from the BoC decision table for the CA leg and NBER bars for the US leg, no invented cycle detection |
+| Canonical spread series and inversion practice: FRED publishes T10Y2Y and T10Y3M as first class series, the NY Fed publishes a 10y minus 3m recession probability with `P = Phi(-0.5333 - 0.6330 * spread)`, the Cleveland Fed charts the spread with recession shading; T10Y2Y data begins June 1976 and has had six sustained inversion episodes (1978-80, 1980-82, 1989-90, 2000-01, 2006-07, 2022-24) | FRED T10Y2Y page; NY Fed probability of US recession PDF; Cleveland Fed yield curve page; secondary episode count from eco3min inversion history | High for primary sources, Medium for episode counts | 2s10s inversion frequency should be reported as negative-day share over a stated window, with NBER shading behind it |
+| Percentile bands have no single official standard; statistical releases use fixed windows (BoC Canadian bond yields 10-year lookup) or full history with user windowing (FRED), so any band must disclose its window and calendar | BoC 10-year lookup; FRED full history convention | Medium | Recommend a trailing 10-year percentile band (10th, 50th, 90th) as primary with a full-history range as secondary, window label printed on the chart |
+| Rolling horizon reporting is standard as basis point change over trailing 1 year (about 250 business days) and 5 years (about 1,250), and FRED encodes this canonically with `chg` and `pch` unit transforms; the repo already uses 60 and 250 day z-windows | FRED API units documentation; Phase 2 slope z research in this file | High | Add `dy_1y_bp` and `dy_5y_bp` derived fields rather than recomputing in the browser |
+| Drawdown language belongs to price or total return series; this project stores yields only, so the defensible metric is distance from the trailing window maximum yield in basis points with the window stated | Market convention, no central bank standard found | Medium | Label it `dist_from_peak_yield_bp` with an explicit window, do not call it drawdown without a return series |
+| Probable CPI pinning defect: `config/cpi_components.yaml` labels do not match WDS series titles for the pinned vectors, and the artifact's trim year-over-year diverges from published values (see Validation Data) | WDS `getSeriesInfoFromVector` and published anchors, live 2026-11-05 | High for the metadata mismatch, needs code-reviewer confirmation for impact | Resolve and add a label assertion before any CPI window extension, V19 to V22 currently skip when CPI degrades so the gate has not been running |
+
+### Relevant Equations
+| Equation | Description | Variables |
+|----------|-------------|-----------|
+| `rows = 249 * years` | Joint CA plus US daily rows per year (measured 1250 rows over 2021-10-25 to 2026-10-30) | years in calendar years, joint business days only |
+| `bytes = rows * 1020 + overhead(about 40000 with 60 CPI rows)` | Artifact size model from the measured manifest | bytes UTF-8 of canonical indent-2 JSON |
+| `p_k(t) = quantile(y over trailing W days, k)` with k in {0.10, 0.50, 0.90} | Percentile band, window W disclosed | W about 2500 days for a 10-year band |
+| `dy_1y = (y_t - y_{t-250}) * 100`, `dy_5y = (y_t - y_{t-1250}) * 100` | Rolling horizon change in basis points | y in percent, t joint business days |
+| `inv_freq = count(s_d < 0) / count(d in window)` | 2s10s inversion frequency | s_d = y_10y - y_2y in bp per day |
+| `d_peak = (max(y over W) - y_t) * 100` | Distance from trailing peak yield in bp | positive means current yield is below the window high |
+| `P = Phi(-0.5333 - 0.6330 * spread)` | NY Fed (Estrella and Mishrick) recession probability from the 10y minus 3m spread | spread in percentage points, Phi standard normal CDF |
+| `z = (s - mu) / sigma` over 60 and 250 days | Slope z already in the project (unchanged) | existing Phase 2 convention |
+
+### Validation Data
+| Benchmark | Value | Source | Uncertainty |
+|-----------|-------|--------|-------------|
+| Valet full history response | 6,461 rows, 3,874,616 bytes, 978 ms, first 2001-01-02, last 2026-11-03 | Live group fetch 2026-11-05 | Grows by one row per business day |
+| Valet empty probes | 1900-1990 empty, 1991-1994 empty, 1995-2004 first row 2001-01-02, `BD.CDN.10YR.DQ.YLD` 1950-2000 empty | Live probes | None |
+| DGS2 | 1976-06-01 to present, 13,136 observations to 2026-10-06 | Fed H.15 DDP review table | Official series metadata |
+| DGS5, DGS10 | 1962-01-02 start | Fed H.15 DDP review table; FRED series metadata | Official series metadata |
+| DGS30 | 1977-02-15 start, discontinued 2002-02-18, reintroduced 2006-02-09 | FRED DGS30 data page notes | Gap is about 3 years 11 months |
+| FRED throttle | 120 requests per minute per key, 429 on excess | FRED API errors doc | Stated as up to 120 |
+| StatCan cubes | 0004 1914-01-01 (2,139 series, 1,154,918 points, release 2026-10-19T08:30); 0006 1992-01-01 (11 series); 0007 1986-01-01 to 2025-01-01 (5,136 series); 0256 1949-01-01 (13 series); 0259 1989-01-01 to 2026-03-01 (565 series) | WDS `getCubeMetadata` live | Cube dates move with table maintenance |
+| Component vector depth | 1,353 months from 1914-01 to 2026-09 for vectors 41690973, 41690976, 41690978, 41691027 | WDS `getDataFromVectorsAndLatestNPeriods` | None stated |
+| Artifact | 1,308,994 bytes, sha256 `5b4a81d1...`, daily_count 1,250 (2021-10-25 to 2026-10-30), cpi_count 60 (2021-10 to 2026-09) | `history/backfill-manifest.json` plus artifact metadata | Exact by construction |
+| Published CPI-trim y/y (vector 108785715) | Sep 2022 5.5, Jan 2026 2.4, Sep 2026 1.8 | WDS live | Current vintage, revisable 3y plus 1m |
+| Artifact CPI-trim y/y | Sep 2022 9.996, Jan 2026 4.284, Sep 2026 1.803 | `history/backfill.json` | Matches published only at the last month |
+| Config label versus WDS title | `C01 Meat` on 41690973 returns `Canada;All-items`; `C04 Bakery and cereal products` on 41690976 returns `Canada;Meat`; `C10 Rent` on 41690982 returns `Canada;Fresh or frozen chicken`; `trim_index_vector_id` 41691028 returns `Canada;Canned vegetables and other vegetable preparations` | WDS `getSeriesInfoFromVector` live | Metadata is authoritative for vector identity |
+| Headline cross-check | Vector 41690973 y/y Jan 2026 2.29 and Sep 2026 3.09 against published headline 2.3 and 3.1 | WDS plus StatCan Daily | Confirms that vector is All-items, not Meat |
+| True core vectors | trim index 1481215116 (Jan 2026 level 218.0, y/y 2.44), median index 1481215115 (y/y Sep 2026 1.95), trim y/y 108785715 (2.4 and 1.8) | WDS coordinate lookup on 18100256 | Index base 1989-01 equals 100 |
+
+### Practical Implications
+- Recommended maximum window: 10 years (about 2,490 daily rows, about 2.55 MB). Rationale: it matches the BoC standard 10-year lookup window, it fits every 5 MB byte cap with about 45 percent headroom, it needs only cap and drift-test updates, and uPlot renders 4 series times 2,490 points orders of magnitude below its 166k point bench.
+- Cap changes needed for 10 years: `MAX_BACKFILL_DAILY_ROWS` to about 2,750, `MAX_HISTORY_OBS` to about 3,000, `FRED_LOOKBACK_DAYS` to about 3,820, `MAX_HISTORY_DAILY` in build-data to about 2,750, `MAX_CHART_POINTS` to about 4,000, `MAX_TABLE_ROWS` to about 3,000, and the drift assertions in `web/tests/phase7-terminal.test.mjs`.
+- Do not target 20 years without a size strategy: 5,000 rows is about 5.08 MB and crosses three 5 MB caps (pipeline, build-data, client fetch). Viable strategies are compact row encoding (arrays instead of keyed objects, roughly 3x smaller), splitting a yields-only history from derived slopes and spreads that the client recomputes, or chunking history by window.
+- Hard ceiling regardless of strategy: 2001-01-02 from Valet (about 26 years, 6,461 rows). Anything deeper requires a different Canadian source (for example BoC weekly or monthly research series), which is out of scope for this pipeline.
+- CPI window: keep 60 months until two issues are resolved, the probable vector pinning mismatch and the period-correct weight vintage rule from Phase 4 (config pins the 2024 basket with link month 2025-05, provisional true, while weights exist only from 1986 and published validation only from 1989). If extended, `MAX_CPI_MONTHS` 240 caps component months at 20 years and published cross-checks stop at 1989.
+- US 30-year leg has no prints from 2002-02-18 to 2006-02-09, so a multi-year window must tolerate `spreads_status` of partial or missing on that tenor, and the UI should annotate the gap rather than forward fill (existing no-fill rule stays).
+- Analysis panel over the longer window: trailing 10-year percentile band (10th, 50th, 90th) with window label, NBER recession shading behind the US leg, BoC policy decision markers (date, target, change) for the CA leg, rolling 250 and 1,250 day changes in bp, distance from trailing peak yield in bp with window stated, and 2s10s inversion day share over the same stated window.
+- Data growth: a 10-year artifact roughly doubles the committed history file, and the artifact is rewritten on each backfill, so keep backfill regeneration infrequent and let daily snapshots carry the small delta; git delta compression mitigates but does not remove the cost.
+- Verification items for tester and code-reviewer: run verify with working StatCan access so V19 to V22 actually execute (both recent snapshots show them skipped with CPI degraded), add a label assertion that each config component vector title matches its config label, and pin a golden check that replica trim y/y matches published anchors (Sep 2022 5.5, Jan 2026 2.4, Sep 2026 1.8).
+
+### Citations
+1. Bank of Canada, Valet API how-to, section Request limits - https://www.bankofcanada.ca/valet-api-how-to
+2. Bank of Canada, live Valet group probes `observations/group/bond_yields_benchmark/json` (2026-11-05)
+3. FRED API, series observations parameters (limit 1 to 100000, offset) - https://fred.stlouisfed.org/docs/api/fred/series_observations.html
+4. FRED API, errors (429 up to 120 requests per minute) - https://fred.stlouisfed.org/docs/api/fred/errors.html
+5. Federal Reserve Board, H.15 Data Download Program review (available-from dates and observation counts) - https://www.federalreserve.gov/datadownload/Review.aspx?rel=H15
+6. FRED, DGS30 data page and series notes (1977-02-15 start, 2002 discontinuation, 2006 reintroduction) - https://fred.stlouisfed.org/data/DGS30
+7. Statistics Canada, Web Data Service user guide (rate limits, 409 window, getCubeMetadata) - https://www.statcan.gc.ca/en/developers/wds/user-guide
+8. Statistics Canada, WDS `getCubeMetadata` for 18100004, 18100006, 18100007, 18100256, 18100259 (live 2026-11-05)
+9. Statistics Canada, WDS `getSeriesInfoFromVector` and `getDataFromVectorsAndLatestNPeriods` probes (live 2026-11-05)
+10. FRED help, what dates are used for the US recession bars - https://fred.stlouisfed.org/help/data/understanding-the-data/recession-bars
+11. NBER, business cycle dating - https://www.nber.org/research/business-cycle-dating
+12. FRED, T10Y2Y 10-Year Treasury Constant Maturity Minus 2-Year - https://fred.stlouisfed.org/series/t10y2y
+13. Federal Reserve Bank of New York, probability of US recession predicted by Treasury spread (Estrella and Mishrick coefficients) - https://www.newyorkfed.org/medialibrary/media/research/capital_markets/prob_rec.pdf
+14. Federal Reserve Bank of Cleveland, yield curve and predicted GDP growth - https://www.clevelandfed.org/indicators-and-data/yield-curve-and-predicted-gdp-growth
+15. Bank of Canada, policy interest rate decision table - https://www.bankofcanada.ca/core-functions/monetary-policy/key-interest-rate
+16. Bank of Canada, Canadian bond yields 10-year lookup - https://www.bankofcanada.ca/rates/interest-rates/lookup-bond-yields
+17. eco3min, 2s10s inversion history since 1976 (secondary source for episode counts) - https://eco3min.fr/en/yield-curve-inversion-history-2s10s-spread
+18. Project code: `src/goc_rates/limits.py`, `src/goc_rates/backfill.py`, `src/goc_rates/history.py`, `src/goc_rates/clients/`, `web/scripts/build-data.mjs`, `web/src/components/Chart.tsx`
+
+### Verification Checklist
+- [x] Findings are from reputable sources
+- [x] Equations are correctly transcribed
+- [x] Validation data includes uncertainty
+- [x] Practical implications are actionable
+- [x] All sources cited
+- [x] Research supports phase architecture decisions
+- [ ] Open: code-reviewer to confirm the CPI component vector pinning mismatch before any CPI window extension

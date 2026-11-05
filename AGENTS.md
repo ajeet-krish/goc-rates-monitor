@@ -43,6 +43,11 @@ Keep functions small and pure where practical.
 | Phase 5 | Inflation breaks verification methods polish | Complete |
 | Phase 6 | True bootstrap with benchmark map post launch | Complete |
 | Phase 7 | History backfill plus terminal UI | Complete |
+| Phase 8.1 | Merged history overflow fix CI green | Complete |
+| Phase 8.2 | Ten year reseal with raised caps | In Progress |
+| Phase 8.3 | Analysis engines range aggregation percentiles regimes | Pending |
+| Phase 8.4 | UI wiring selector shading captions | Pending |
+| Phase 8.5 | UI copy pass terminal style | Pending |
 
 ## Deep Docs
 

@@ -3,6 +3,8 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { applyOverflowPolicy } from "./history-overflow.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
 const webDir = join(here, "..");
@@ -569,21 +571,33 @@ async function main() {
     }
     row.row_digest = rowDigestFor(body);
   }
-  if (mergedDaily.length > MAX_HISTORY_DAILY) {
-    fail("merged daily count " + mergedDaily.length + " exceeds the " + MAX_HISTORY_DAILY + " cap");
+  let dailyPolicy;
+  try {
+    dailyPolicy = applyOverflowPolicy(mergedDaily, MAX_HISTORY_DAILY);
+  } catch (err) {
+    fail(err.message);
+  }
+  const cappedDaily = dailyPolicy.rows;
+  const trimmedBackfilledCount = dailyPolicy.trimmedCount;
+  if (trimmedBackfilledCount > 0) {
+    console.warn(
+      "build-data: trimmed " + trimmedBackfilledCount +
+        " oldest backfilled daily row(s) to stay within the " +
+        MAX_HISTORY_DAILY + " cap"
+    );
   }
   if (mergedCpi.length > MAX_HISTORY_CPI) {
     fail("merged CPI count " + mergedCpi.length + " exceeds the " + MAX_HISTORY_CPI + " cap");
   }
   const historyDoc = {
     cpi: mergedCpi,
-    daily: mergedDaily,
+    daily: cappedDaily,
     exclusions: backfillDoc.exclusions ?? [],
     metadata: {
       asof: staged.length > 0 ? staged[staged.length - 1].date : backfillDoc.metadata.asof,
       cpi_count: mergedCpi.length,
       cpi_count_unit: "count",
-      daily_count: mergedDaily.length,
+      daily_count: cappedDaily.length,
       daily_count_unit: "count",
       method: HISTORY_METHOD,
       schema_version: 1,
@@ -632,8 +646,9 @@ async function main() {
     history: {
       sha256: historyDigest,
       bytes_utf8: Buffer.byteLength(historyText, "utf8"),
-      daily_count: mergedDaily.length,
+      daily_count: cappedDaily.length,
       cpi_count: mergedCpi.length,
+      trimmed_backfilled_count: trimmedBackfilledCount,
     },
   };
   await fs.writeFile(join(outDir, "index.json"), JSON.stringify(indexDoc, null, 2) + "\n", "utf8");

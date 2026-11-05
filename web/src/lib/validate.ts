@@ -1543,7 +1543,7 @@ export function validateIndex(doc: unknown): DataIndex {
     if (typeof history.sha256 !== "string" || !SHA256_HEX.test(history.sha256)) {
       fail("index.history.sha256", "must be a 64 character lowercase hex digest");
     }
-    for (const key of ["bytes_utf8", "daily_count", "cpi_count"]) {
+    for (const key of ["bytes_utf8", "daily_count", "cpi_count", "trimmed_backfilled_count"]) {
       const value = (history as Record<string, unknown>)[key];
       if (typeof value !== "number" || !Number.isInteger(value) || (value as number) < 0) {
         fail("index.history." + key, "must be a non negative integer");

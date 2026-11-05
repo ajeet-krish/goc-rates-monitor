@@ -129,8 +129,10 @@ async function makeSandbox() {
   const webDir = join(root, "web");
   const scriptDir = join(webDir, "scripts");
   await mkdir(scriptDir, { recursive: true });
-  const source = await readFile(BUILD_SCRIPT, "utf8");
-  await writeFile(join(scriptDir, "build-data.mjs"), source, "utf8");
+  for (const name of ["build-data.mjs", "history-overflow.mjs"]) {
+    const source = await readFile(join(dirname(BUILD_SCRIPT), name), "utf8");
+    await writeFile(join(scriptDir, name), source, "utf8");
+  }
   return {
     root,
     snapshots: join(root, "snapshots"),
@@ -510,7 +512,13 @@ describe("validateHistory closed sets and recompute", () => {
       dates: [],
       latest: null,
       entries: {},
-      history: { sha256: "b".repeat(64), bytes_utf8: 10, daily_count: 2, cpi_count: 2 },
+      history: {
+        sha256: "b".repeat(64),
+        bytes_utf8: 10,
+        daily_count: 2,
+        cpi_count: 2,
+        trimmed_backfilled_count: 0,
+      },
     };
     assert.doesNotThrow(() => validateIndex(index));
     index.history.sha256 = "short";

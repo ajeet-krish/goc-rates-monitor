@@ -784,82 +784,6 @@
   "daily": [
     {
       "calendar_gap": false,
-      "date": "2021-10-25",
-      "input_digest_sha256": null,
-      "row_digest": "598558d93179edbc2be1cb91e21473687e85384ae9278260f8726106ce63d0b5",
-      "slopes_bp": {
-        "10Y_30Y": 39.99999999999999,
-        "2Y_10Y": 78.99999999999999,
-        "2Y_5Y": 48.00000000000001,
-        "5Y_30Y": 70.99999999999997
-      },
-      "slopes_unit": "basis_points",
-      "snapshot_sha256": null,
-      "source": "derived:backfill_v1",
-      "spreads_bp": {
-        "10Y": 1.0000000000000009,
-        "2Y": 39.0,
-        "30Y": -4.0000000000000036,
-        "5Y": 15.000000000000014
-      },
-      "spreads_status": "ok",
-      "spreads_unit": "basis_points",
-      "switch_by_tenor": {
-        "10Y": false,
-        "2Y": false,
-        "30Y": false,
-        "5Y": false
-      },
-      "switch_in_window": false,
-      "verified": false,
-      "yields_percent": {
-        "10Y": 1.65,
-        "2Y": 0.86,
-        "30Y": 2.05,
-        "5Y": 1.34
-      },
-      "yields_unit": "percent"
-    },
-    {
-      "calendar_gap": false,
-      "date": "2021-10-26",
-      "input_digest_sha256": null,
-      "row_digest": "17c74a02da538b003c6c3b6af69c0aac23745000e7b195cd7e0954fca5a8765a",
-      "slopes_bp": {
-        "10Y_30Y": 37.999999999999986,
-        "2Y_10Y": 76.99999999999999,
-        "2Y_5Y": 47.00000000000001,
-        "5Y_30Y": 67.99999999999997
-      },
-      "slopes_unit": "basis_points",
-      "snapshot_sha256": null,
-      "source": "derived:backfill_v1",
-      "spreads_bp": {
-        "10Y": 0.0,
-        "2Y": 39.0,
-        "30Y": -4.0000000000000036,
-        "5Y": 13.00000000000001
-      },
-      "spreads_status": "ok",
-      "spreads_unit": "basis_points",
-      "switch_by_tenor": {
-        "10Y": false,
-        "2Y": false,
-        "30Y": false,
-        "5Y": false
-      },
-      "switch_in_window": false,
-      "verified": false,
-      "yields_percent": {
-        "10Y": 1.63,
-        "2Y": 0.86,
-        "30Y": 2.01,
-        "5Y": 1.33
-      },
-      "yields_unit": "percent"
-    },
-    {
-      "calendar_gap": false,
       "date": "2021-10-27",
       "input_digest_sha256": null,
       "row_digest": "bffe4adffdaf7f12fb1133b8dabc4e7fffa96f3c9d6469cff299d120f3c683ea",
@@ -48281,6 +48205,82 @@
         "5Y": 3.51
       },
       "yields_unit": "percent"
+    },
+    {
+      "calendar_gap": false,
+      "date": "2026-11-02",
+      "input_digest_sha256": null,
+      "row_digest": "f0b32ae3bedfebf5e65cb2834e16f0c356f913ef2467afd9e1538e2132a1536a",
+      "slopes_bp": {
+        "10Y_30Y": 33.00000000000005,
+        "2Y_10Y": 50.0,
+        "2Y_5Y": 23.0,
+        "5Y_30Y": 60.00000000000006
+      },
+      "slopes_unit": "basis_points",
+      "snapshot_sha256": "9b14087c2c9f27a5048c9df29da86f7b8a725120c8581048414339283436dfba",
+      "source": "derived:history_verified_v1",
+      "spreads_bp": {
+        "10Y": -116.00000000000006,
+        "2Y": -127.99999999999999,
+        "30Y": -119.99999999999993,
+        "5Y": -120.00000000000001
+      },
+      "spreads_status": "ok",
+      "spreads_unit": "basis_points",
+      "switch_by_tenor": {
+        "10Y": false,
+        "2Y": false,
+        "30Y": false,
+        "5Y": false
+      },
+      "switch_in_window": false,
+      "verified": true,
+      "yields_percent": {
+        "10Y": 3.78,
+        "2Y": 3.28,
+        "30Y": 4.11,
+        "5Y": 3.51
+      },
+      "yields_unit": "percent"
+    },
+    {
+      "calendar_gap": false,
+      "date": "2026-11-03",
+      "input_digest_sha256": null,
+      "row_digest": "3c52e084d9950e4d9bdde9bebf69014c2f9362160302994329fdaf53a6c49262",
+      "slopes_bp": {
+        "10Y_30Y": 31.99999999999994,
+        "2Y_10Y": 48.00000000000004,
+        "2Y_5Y": 20.000000000000018,
+        "5Y_30Y": 59.999999999999964
+      },
+      "slopes_unit": "basis_points",
+      "snapshot_sha256": "45e51eeaf40dafde5e9dc1b038f213880b110bfdb51cb2a23c11d9c22f516d90",
+      "source": "derived:history_verified_v1",
+      "spreads_bp": {
+        "10Y": -117.0,
+        "2Y": -133.0,
+        "30Y": -122.00000000000006,
+        "5Y": -124.00000000000003
+      },
+      "spreads_status": "ok",
+      "spreads_unit": "basis_points",
+      "switch_by_tenor": {
+        "10Y": false,
+        "2Y": false,
+        "30Y": false,
+        "5Y": false
+      },
+      "switch_in_window": false,
+      "verified": true,
+      "yields_percent": {
+        "10Y": 3.74,
+        "2Y": 3.26,
+        "30Y": 4.06,
+        "5Y": 3.46
+      },
+      "yields_unit": "percent"
     }
   ],
   "exclusions": [
@@ -48290,7 +48290,7 @@
     }
   ],
   "metadata": {
-    "asof": "2026-10-30",
+    "asof": "2026-11-03",
     "cpi_count": 60.0,
     "cpi_count_unit": "count",
     "daily_count": 1250.0,

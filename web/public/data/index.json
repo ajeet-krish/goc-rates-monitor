@@ -1,20 +1,33 @@
 {
-  "generated_utc": "2026-11-02T23:02:22.926Z",
+  "generated_utc": "2026-11-05T16:40:55.990Z",
   "dates": [
-    "2026-10-30"
+    "2026-10-30",
+    "2026-11-02",
+    "2026-11-03"
   ],
-  "latest": "2026-10-30",
+  "latest": "2026-11-03",
   "entries": {
     "2026-10-30": {
       "snapshot_sha256": "aaf5c13b155b276217329e347b3f0afc44b9a82fc89e0251524ee201acd397bf",
       "verify_passed": true,
       "bytes_utf8": 42027
+    },
+    "2026-11-02": {
+      "snapshot_sha256": "9b14087c2c9f27a5048c9df29da86f7b8a725120c8581048414339283436dfba",
+      "verify_passed": true,
+      "bytes_utf8": 41889
+    },
+    "2026-11-03": {
+      "snapshot_sha256": "45e51eeaf40dafde5e9dc1b038f213880b110bfdb51cb2a23c11d9c22f516d90",
+      "verify_passed": true,
+      "bytes_utf8": 41890
     }
   },
   "history": {
-    "sha256": "0a27055040ba3582d95f600d82b525bc550b8b8ad2656a88bd9fbf995af8367f",
-    "bytes_utf8": 1308976,
+    "sha256": "7f9804f13c1c0187d895bf1fa0c609b5225a4af203cfdeca675a2826c4644365",
+    "bytes_utf8": 1309113,
     "daily_count": 1250,
-    "cpi_count": 60
+    "cpi_count": 60,
+    "trimmed_backfilled_count": 2
   }
 }

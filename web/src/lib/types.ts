@@ -288,6 +288,7 @@ export interface DataIndex {
     bytes_utf8: number;
     daily_count: number;
     cpi_count: number;
+    trimmed_backfilled_count: number;
   };
 }
 

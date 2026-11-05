@@ -131,8 +131,10 @@ async function makeSandbox() {
   const webDir = join(root, "web");
   const scriptDir = join(webDir, "scripts");
   await mkdir(scriptDir, { recursive: true });
-  const source = await readFile(BUILD_SCRIPT, "utf8");
-  await writeFile(join(scriptDir, "build-data.mjs"), source, "utf8");
+  for (const name of ["build-data.mjs", "history-overflow.mjs"]) {
+    const source = await readFile(join(dirname(BUILD_SCRIPT), name), "utf8");
+    await writeFile(join(scriptDir, name), source, "utf8");
+  }
   return {
     root,
     snapshots: join(root, "snapshots"),
