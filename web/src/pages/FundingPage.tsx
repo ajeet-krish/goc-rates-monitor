@@ -71,14 +71,13 @@ export default function FundingPage(props: Props) {
   return (
     <section aria-label="Funding">
       <p class="hero-kicker">Funding: CORRA, spreads, carry, risk</p>
-      <h2 class="hero-headline">What it costs to hold the trade.</h2>
+      <h2 class="hero-headline">Carry, risk, and CA-US spreads.</h2>
       <p class="hero-dek">
-        CORRA value dates lag publication by one business day. CA-US spreads join
-        on common business days with no forward fill. The zero curve is distinct
-        from input YTM: carry and risk read solved semiannual zeros from the
-        bootstrapped curve, never requoted yields. Carry is horizon 0.25 years,
-        ex coupon and ex funding, on an unchanged curve. DV01 is closed form
-        semiannual per million.
+        CORRA value dates lag publication by one business day, and CA-US
+        spreads join on common business days with no forward fill. Carry and
+        risk read solved semiannual zeros, never requoted yields, at horizon
+        0.25 years, ex coupon and ex funding, on an unchanged curve. DV01 is
+        closed form semiannual per million face.
       </p>
       <SectionState
         loading={props.loading}
@@ -225,10 +224,11 @@ export default function FundingPage(props: Props) {
               ]}
             />
             <p class="figure-caption">
-              Range {historyRangeLabel(props.history)}. Backfilled spans are
-              unverified (source derived:backfill_v1) and render dashed and
-              muted. Verified spans carry snapshot digests. Missing US legs stay
-              null with status missing or partial, never filled.
+              Source span {historyRangeLabel(props.history)}: all published
+              dates, not the selected window. Backfilled rows are unverified
+              (source derived:backfill_v1) and render dashed and muted.
+              Verified rows carry snapshot digests. Missing US legs stay null
+              with status missing or partial, never filled.
             </p>
           </Show>
         </div>

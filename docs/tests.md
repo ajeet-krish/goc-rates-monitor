@@ -2,6 +2,32 @@
 
 Last updated: 2026-11-06
 
+## 2026-11-06 - Phase 8.5: Test Report
+
+Phase 8.5 UI copy pass coverage in `web/tests/phase8-85-copy.test.mjs`
+(10 new tests across 3 suites): a dead metaphor register scan over every
+file under `web/src`, a stale number lint for the retired 1250 cap beside
+the current 2750 window cap and the 60 month CPI copy, and a hero dek
+quantitative anchor scan over the four sampled pages. Run with
+`cd web && npm test`, `npm run typecheck`, and `npm run build` in
+`/Users/ajeet/Projects/goc-rates-monitor/web`. The build ran `build:data`
+and rewrote `web/public/data/index.json`, restored from git afterwards;
+nothing committed.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| npm test web (340 tests, 339 pass, 1 fail) | FAIL | 58 suites, 0 skipped; the single failure is the InflationPage hero dek anchor row below |
+| Dead metaphor register scan (2 tests) | PASS | The five removed phrases (thesis, commentary on this line, stated plainly, honest either way, no funding story) stay absent from all files under web/src including code comments; a scan sanity pin keeps the walker honest by requiring page and lib sources in the tree |
+| Stale number lint (3 tests) | PASS | 1250 absent from every file under web/src, methods copy states up to 2750, and monthly CPI rows (up to 60) survives as the stable 60 month CPI copy |
+| Hero dek extraction plus IndexPage, CurvePage, FundingPage anchors (4 tests) | PASS | Each sampled dek carries a unit token: face for IndexPage, bp plus years plus V check ids for CurvePage, business day plus years plus face for FundingPage |
+| InflationPage hero dek holds a unit token or a method id (1 test) | FAIL | Dek is qualitative with no unit token and no method id; see failure analysis |
+| npm run typecheck | PASS | tsc noEmit clean |
+| npm run build | PASS | vite build clean plus build:data; index.json restored from git afterwards |
+
+Coverage summary: 339 passed and 1 failed (web), 0 skipped. Happy path covered (the dead register phrases stay dead, the stale 1250 cap stays gone, the 2750 window cap and 60 month CPI copy stay pinned, three of four sampled hero deks carry quantitative anchors). Edge cases covered (word boundary on thesis so a compound like synthesis cannot trip the scan, case insensitive phrase matching, a recursive web/src walk pinned to include both page and lib sources so an empty glob cannot pass). Error conditions covered (a hero dek with no unit token and no method id fails loudly with the full dek text in the assertion message).
+
+Failure analysis: one failure, and it is a genuine coverage conflict rather than a fault in the test. The Phase 8.5 units assurance asks each sampled hero dek to hold a unit token or a method id, but the `web/src/pages/InflationPage.tsx` hero dek ("StatCan seasonally adjusted values are reused as published ... replica trim and median are experimental vintages") carries neither, and `git log -p` shows no version of that dek ever carried one; this pass rewrote only its headline. The three other sampled deks pass on their own. Left unresolved pending an orchestrator decision between three options: add a quantitative clause to that dek as a copy only edit, read the method id clause loosely enough to accept the method name anchor "trim and median", or scope the units assertion to the three deks that carry units today. The two register leftovers from the copy review (`methods-content.ts` "gate honesty", `StalenessBanner.tsx` "nudge" comment) stay advisory rows in reviews.md and are deliberately outside the five phrase banned list, so the register scan is green without source edits.
+
 ## 2026-11-06 - Phase 8.4: Test Report
 
 Phase 8.4 review follow up coverage in `web/tests/phase8-84-wiring.test.mjs`

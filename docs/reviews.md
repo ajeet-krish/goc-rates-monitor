@@ -348,3 +348,22 @@ Findings (advisory, none blocking):
 | Low | web/src/components/Chart.tsx:15, web/src/pages/CurvePage.tsx:163 | uPlot renders series labels in its legend and the installed copy of uPlot was not inspectable here (web/node_modules/uplot absent in this worktree), so the legend DOM construction is unverified; no injection path exists today because labels are literals or constrained charset strings | Convention: series labels stay literals or validated charset; verify legend rendering when node_modules is available; delegate to tester |
 
 Recurring patterns: date helpers built on Date.UTC must mind the 0 to 99 year remap for anything derived from validated ISO dates. Functions that format numbers should guard finiteness at the boundary rather than trusting callee invariants. Keep series labels, band fills, and caption inputs on the literal or validated charset side of the trust boundary.
+
+## 2026-11-06 - Phase 8 Phase 5: UI Copy Pass Review
+
+Verdict: PASS
+
+Copy only pass over 12 web source files (97 insertions, 100 deletions). All hunks touch JSX text nodes or TS string literals only. npm test 330 pass 0 fail (exit 0), npm run typecheck clean (exit 0), git diff --stat shows only the 12 source files with no test changes.
+
+| Severity | File:Line | Issue | Fix |
+|----------|-----------|-------|-----|
+| Advisory | web/src/components/Chart.tsx:264 | Figcaption drops "Axis labels carry units always". Per number units are unaffected (yLabel carries units) but the units assurance sentence is gone. | Optional restore if the convention statement is wanted. |
+| Advisory | web/src/pages/CurvePage.tsx:107 | Hero dek drops the explicit "zero curve is distinct from input YTM" sentence. The fact survives on the same site in IndexPage dek, FundingPage dek, InflationPage curve context, and methods-content. | None required; note locality only. |
+| Advisory | web/src/pages/CurvePage.tsx:283 | History caption drops "History loads independently and never blocks the desk". The rule still appears at CurvePage:251 error copy and methods-content:209. | None required. |
+| Advisory | web/src/lib/methods-content.ts:52 | Register leftover "gate honesty" in the V19 to V22 family summary (unchanged hunk in a changed file); same metaphor family as the removed "honest either way". | Reword to literal copy such as "gate flag recompute" in a future copy pass. |
+| Advisory | web/src/components/StalenessBanner.tsx:39 | Register leftover "This banner is a nudge only" in a code comment (unchanged file). | Reword in a future pass. |
+| Advisory | web/src/pages/InflationPage.tsx:73 | Copy no longer mentions the component expansion control ("live behind the expansion below" removed). | Optional restore if discoverability matters. |
+
+Facts verified surviving: method ids true_bootstrap_semiannual_log_discount_v1, benchmark_switch_dod_gate_v1, carry_roll_v1, semiannual_risk_v1, history_merge_v1, V13, V22, V24, V25; tolerances 1.0 bp and 1.0 basis point and threshold 15.0 basis points; provenance ids derived:backfill_v1 and derived:history_verified_v1; degradation and never-blocks explanations; units on all numbers in changed copy. Stale numbers resolved: 1250 gone from web/src, "up to 2750" matches src/goc_rates/limits.py MAX_BACKFILL_DAILY_ROWS 2750, CPI 60 months matches MAX_BACKFILL_CPI_MONTHS 60, render and collection caps 2000 match limits.py and web constants. No em dashes, en dashes, or double hyphens in changed copy. Register patterns (thesis, commentary on this line, stated plainly, honest either way, story) are gone across all of web/src.
+
+Recurring pattern note: copy passes should sweep metaphor register in code comments and unchanged string tables too, not only rendered page copy.

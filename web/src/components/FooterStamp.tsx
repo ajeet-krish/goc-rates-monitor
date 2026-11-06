@@ -35,7 +35,7 @@ export default function FooterStamp(props: Props) {
       : "tolerance unknown";
   return (
     <footer class="footer-stamp" aria-label="Provenance stamp">
-      <p class="stamp-title">Ledger stamp: trust this page only through this block</p>
+      <p class="stamp-title">Provenance stamp: snapshot, methods, verification</p>
       <div class="stamp-row">
         <span>
           snapshot date <span class="num">{props.asof ?? "date missing"}</span>

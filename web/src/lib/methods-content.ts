@@ -69,10 +69,10 @@ export const METHOD_SECTIONS: MethodSection[] = [
   {
     id: "curve",
     kicker: "Curve engine",
-    title: "True bootstrap, stated plainly",
+    title: "True bootstrap in maturity order",
     method: "true_bootstrap_semiannual_log_discount_v1",
     summary:
-      "Benchmark yields to maturity enter as dirty price targets and leave as a solved zero curve on semiannual cashflows. The zero curve is distinct from input YTM: inputs price the bonds, zeros come from the solved discounts.",
+      "Benchmark yields to maturity price each bond to a dirty target per 100 face, then bisection solves a zero curve on semiannual cashflows in maturity order. Solved zeros come from those discounts, never requoted YTMs.",
     points: [
       "Inputs are benchmark yields in percent, priced to dirty targets per 100 face (is_par_approx false, is_zero true).",
       "Knot tenors are residual ACT over 365 years from settlement to each maturity, in duration_years.",
@@ -89,7 +89,7 @@ export const METHOD_SECTIONS: MethodSection[] = [
   {
     id: "carry-risk",
     kicker: "Carry and risk",
-    title: "One horizon, one million, no funding story",
+    title: "Closed form, one horizon, one million",
     method: "carry_roll_v1 and semiannual_risk_v1",
     summary:
       "Carry and risk are closed form illustrations on an unchanged curve. They exclude coupons and funding.",
@@ -99,7 +99,7 @@ export const METHOD_SECTIONS: MethodSection[] = [
       "DV01 scaling is linear in one million face. No convexity adjustment is included.",
     ],
     limits: [
-      "Carry is ex coupon and ex funding. It answers the roll question only, not the holding return.",
+      "Carry is ex coupon and ex funding. Carry reports roll down only, not holding return.",
       "Risk assumes a flat parallel move at the stated tenor. Curve twists are out of scope.",
     ],
   },
@@ -186,9 +186,9 @@ export const METHOD_SECTIONS: MethodSection[] = [
     points: [
       "Tolerance is 1.0 basis point wherever a basis point comparison applies (mixed units name their own tolerances in the detail text).",
       "Every check names its unit in its detail string, so a pass states what was compared.",
-      "The inflation validation flag is honest either way: within_gate or exceeds_gate_needs_explanation both pass V22 when the flag matches the recompute.",
+      "The inflation validation flag passes V22 either way when it matches the recompute: within_gate and exceeds_gate_needs_explanation both pass.",
       "Bootstrap checks V24 and V25 pin settlement dating, cashflow counts, dirty prices, reprice errors, and anchor monotonicity beside the V13 reprice.",
-      "The validation flag never blocks the build. A breached gate asks for an explanation note, not a rebuild.",
+      "The validation flag never blocks the build. A breached gate requires an explanation note and no rebuild.",
     ],
     limits: [
       "Quantity caps, digest matches, and date grammars are checked before any recompute, so oversized or malformed payloads reject fast.",
@@ -204,7 +204,7 @@ export const METHOD_SECTIONS: MethodSection[] = [
       "The sealed backfill plus published snapshots merge into one history document. Verified snapshot rows win, backfilled rows fill the rest, and any overlap beyond tolerance fails the build.",
     points: [
       "Sources are Valet group bond_yields_benchmark for Canadian legs, FRED DGS for US legs with T+1 latency, and StatCan bulk 18100004 plus 18100256 plus 18100007 for CPI.",
-      "Windows are joint complete daily rows (up to 1250) and monthly CPI rows (up to 60) within a 5 MiB document cap.",
+      "Windows are joint complete daily rows (up to 2750) and monthly CPI rows (up to 60) within a 5 MiB document cap.",
       "Overlap checks compare snapshot yields to backfill yields within 1.0 bp and CPI moms within 0.01 pp. Verified rows carry snapshot digests with source derived:history_verified_v1, backfilled rows carry source derived:backfill_v1.",
       "Backfilled spans render dashed and muted with an unverified caption. History loads independently and never blocks the desk.",
       "CPI history uses one uniform vintage (2024 expenditure, link month 2025-05, provisional) so every month reads the same basket.",
@@ -225,7 +225,7 @@ export const ASSUMPTION_ROWS: AssumptionRow[] = [
   {
     topic: "Curve ends",
     assumption: "Beyond the last anchor the zero rate holds flat.",
-    consequence: "Long end extrapolation inherits the last solved zero, stated openly.",
+    consequence: "Long end extrapolation inherits the last solved zero.",
   },
   {
     topic: "Carry path",
@@ -235,7 +235,7 @@ export const ASSUMPTION_ROWS: AssumptionRow[] = [
   {
     topic: "Spread dates",
     assumption: "Only shared Canada US dates enter, with no fill.",
-    consequence: "Holiday gaps appear as gaps, never as flat lines.",
+    consequence: "Holiday gaps render as gaps with no forward fill.",
   },
   {
     topic: "Seasonal adjustment",
@@ -245,7 +245,7 @@ export const ASSUMPTION_ROWS: AssumptionRow[] = [
   {
     topic: "Switch windows",
     assumption: "A switch inside (prev, current] suppresses the day over day delta.",
-    consequence: "Rotation days read as NA with a named reason instead of a false jump.",
+    consequence: "Rotation days read NA with a named reason, never a filled delta.",
   },
 ];
 
@@ -253,7 +253,7 @@ export const LIMIT_ROWS: LimitRow[] = [
   {
     topic: "Curve fit",
     limit: "One semiannual bootstrap in maturity order, no Nelson Siegel Svensson fit.",
-    rationale: "Solved anchors beat an unstated model. Bisection error stays within 1.0 bp per bond.",
+    rationale: "Anchors are solved directly with no fitted model shape. Bisection error stays within 1.0 bp per bond.",
   },
   {
     topic: "Long tenor",
@@ -273,6 +273,6 @@ export const LIMIT_ROWS: LimitRow[] = [
   {
     topic: "Staleness",
     limit: "Banner warns at 4 calendar days in Toronto, V12 fails past 5 business days.",
-    rationale: "The banner is a nudge, the check is the rule. Weekends age the banner but not the check.",
+    rationale: "The banner only warns. Weekends age the banner but not the check.",
   },
 ];

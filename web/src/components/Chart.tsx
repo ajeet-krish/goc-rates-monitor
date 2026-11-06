@@ -253,7 +253,7 @@ export default function Chart(props: Props) {
     <figure style={{ margin: 0 }}>
       {excessive() ? (
         <p role="alert">
-          Chart refused: {props.series.length} series exceed the display cap of{" "}
+          Chart refused: {props.series.length} series exceed the cap of{" "}
           {MAX_CHART_SERIES} series and {MAX_CHART_POINTS} points per series for{" "}
           {props.title}. Pick a narrower view.
         </p>
@@ -261,7 +261,7 @@ export default function Chart(props: Props) {
         <div class="chart-shell" ref={host} role="img" aria-label={props.title} />
       )}
       <figcaption class="figure-caption">
-        {props.title}: {props.yLabel}. Axis labels carry units always.
+        {props.title}: {props.yLabel}.
         {props.note ? " " + props.note : ""}
       </figcaption>
     </figure>

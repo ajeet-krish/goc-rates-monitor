@@ -102,15 +102,14 @@ export default function CurvePage(props: Props) {
   const twoYSummary = () => percentileSummary(twoY().windowPoints);
   return (
     <section aria-label="Curve">
-      <p class="hero-kicker">Curve: true zero curve, bootstrapped</p>
-      <h2 class="hero-headline">Solved zeros, not quoted yields.</h2>
+      <p class="hero-kicker">Curve: zero curve, instruments, history</p>
+      <h2 class="hero-headline">Zero curve solved by bisection within 1.0 bp.</h2>
       <p class="hero-dek">
-        The zero curve is distinct from input YTM. Benchmark yields to maturity
-        price each bond to a dirty target per 100 face, then bisection solves
-        each discount anchor in maturity order within 1.0 bp (V13, V24, V25).
-        Knots use residual ACT over 365 years from settlement. Log discounts
-        interpolate linearly between anchors, with a flat zero tail past the
-        last anchor.
+        Benchmark yields to maturity price each bond to a dirty target per 100
+        face, then bisection solves each discount anchor in maturity order
+        within 1.0 bp (V13, V24, V25). Knots use residual ACT over 365 years
+        from settlement, and log discounts interpolate linearly with a flat
+        zero tail past the last anchor.
       </p>
       <SectionState
         loading={props.loading}
@@ -125,10 +124,9 @@ export default function CurvePage(props: Props) {
         </p>
         <Show when={sparse()}>
           <p class="figure-caption" role="status">
-            Degraded: sparse instrument disclosure. Knots render while the
-            instrument or anchor register is absent, so repricing stays
-            unverified on this page until the pipeline republishes settlement,
-            instruments, and anchors.
+            Degraded: sparse instrument disclosure. Knots render without the
+            instrument or anchor register, so repricing stays unverified until
+            the pipeline republishes settlement, instruments, and anchors.
           </p>
         </Show>
         <Show when={props.compareError}>
@@ -284,11 +282,11 @@ export default function CurvePage(props: Props) {
               ]}
             />
             <p class="figure-caption">
-              Range {historyRangeLabel(props.history)}. Backfilled spans are
-              unverified (source derived:backfill_v1) and render dashed and
-              muted. Verified spans carry snapshot digests (source
-              derived:history_verified_v1). History loads independently and
-              never blocks the desk.
+              Source span {historyRangeLabel(props.history)}: all published
+              dates, not the selected window. Backfilled rows are unverified
+              (source derived:backfill_v1) and render dashed and muted.
+              Verified rows carry snapshot digests (source
+              derived:history_verified_v1).
             </p>
           </Show>
           <Show when={!props.historyError && (props.history?.daily.length ?? 0) === 0}>

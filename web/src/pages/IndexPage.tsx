@@ -40,14 +40,14 @@ export default function IndexPage(props: Props) {
     <section aria-label="Desk today">
       <div class="hero-ledger">
         <div>
-          <p class="hero-kicker">Internal research desk: read the curve first</p>
-          <h2 class="hero-headline">The live curve is the thesis.</h2>
+          <p class="hero-kicker">Desk: latest snapshot</p>
+          <h2 class="hero-headline">Bootstrapped zero curve from benchmark YTMs.</h2>
           <p class="hero-dek">
-            Government of Canada benchmark yields to maturity price each bond to
-            a dirty target, then bisection solves the zero curve on semiannual
-            cashflows. The zero curve is distinct from input YTM: quotes enter,
-            solved zeros leave. Flat zero tail past the last anchor, 30Y proxy at
-            the long end. Everything else on this desk is commentary on this line.
+            Benchmark yields to maturity price each bond to a dirty target per
+            100 face, then bisection solves the zero curve on semiannual
+            cashflows. Solved zeros come from those discounts, never from
+            requoted YTMs. The tail past the last anchor holds flat, and the
+            long end is a 30Y proxy.
           </p>
           <SectionState
             loading={props.loading}
@@ -76,7 +76,7 @@ export default function IndexPage(props: Props) {
           </SectionState>
         </div>
         <div class="ledger-card">
-          <h2>Today on the desk</h2>
+          <h2>Latest snapshot</h2>
           <SectionState
             loading={props.loading}
             error={props.error}
@@ -122,13 +122,13 @@ export default function IndexPage(props: Props) {
               </tbody>
             </table>
             <p class="figure-caption">
-              Method true_bootstrap_semiannual_log_discount_v1. Solved zero curve
-              (is_zero true, is_par_approx false), distinct from input YTM. Long
-              end is a 30Y proxy. Sparse instrument disclosure lists cashflows,
-              dirty prices, and reprice errors on the curve page. Degraded curve
-              registers withhold repricing until settlement and anchors return.
-              The 2s10s slope is the stored backtest slope, never recomputed here.
-              NA until the pipeline publishes a slope series.
+              Method true_bootstrap_semiannual_log_discount_v1 (is_zero true,
+              is_par_approx false). Long end is a 30Y proxy. Sparse instrument
+              disclosure on the curve page lists cashflows, dirty prices, and
+              reprice errors, and degraded curve registers withhold repricing
+              until settlement and anchors return. The 2s10s slope is stored by
+              the backtest and never recomputed here, NA until the pipeline
+              publishes a slope series.
             </p>
           </SectionState>
         </div>

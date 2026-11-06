@@ -71,7 +71,7 @@ export default function DataTable(props: Props) {
         fallback={
           <p role="alert">
             Table refused: {props.rows.length} rows and {props.columns.length} columns
-            exceed the display cap of {MAX_TABLE_ROWS} rows and {MAX_TABLE_COLUMNS} columns
+            exceed the cap of {MAX_TABLE_ROWS} rows and {MAX_TABLE_COLUMNS} columns
             for {props.caption}. Pick a narrower view.
           </p>
         }

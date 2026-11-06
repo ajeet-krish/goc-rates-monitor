@@ -40,11 +40,12 @@ export default function InflationPage(props: Props) {
   return (
     <section aria-label="Inflation">
       <p class="hero-kicker">Inflation: experimental trim and median</p>
-      <h2 class="hero-headline">Headline is final. Core is vintage.</h2>
+      <h2 class="hero-headline">Publisher series final, replica experimental.</h2>
       <p class="hero-dek">
         StatCan seasonally adjusted values are reused as published, with no extra
         transformation. Publisher series stay final while the replica trim and
-        median are experimental vintages that revise with the bulk source.
+        median, rates in percent per month, are experimental vintages that
+        revise with the bulk source.
       </p>
       <SectionState
         loading={props.loading}
@@ -70,11 +71,11 @@ export default function InflationPage(props: Props) {
           <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Decomposition (percentage points)</h2>
             <p class="figure-caption">
-              All {inflation()?.component_count} components live behind the
-              expansion below, sortable by rate, weight, or contribution with
-              nulls last. Total {inflation()?.total_contribution_pp.toFixed(3)} pp,
-              headline {inflation()?.headline_mom.value} percent per month, kept
-              weight {inflation()?.kept_weight_fraction.toFixed(2)}, excluded{" "}
+              {inflation()?.component_count} components,{" "}
+              sortable by rate, weight, or contribution with nulls last. Total{" "}
+              {inflation()?.total_contribution_pp.toFixed(3)} pp, headline{" "}
+              {inflation()?.headline_mom.value} percent per month, kept weight{" "}
+              {inflation()?.kept_weight_fraction.toFixed(2)}, excluded{" "}
               {inflation()?.excluded_weight_fraction.toFixed(2)}. Each row
               recomputes as weight times rate over 100 within 0.01 pp.
             </p>
@@ -103,14 +104,14 @@ export default function InflationPage(props: Props) {
           <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Tax window flag (2024-12 to 2026-03)</h2>
             <p>
-              GST holiday ran December 2024 to February 2025, the tax left in
-              March 2025, and restoration lands March 2026. Replica months
-              inside 2024-12 to 2026-03 carry the tax window flag and stay
-              experimental and revisable.
+              GST holiday ran December 2024 to February 2025, removal March
+              2025, restoration March 2026. Replica months inside 2024-12 to
+              2026-03 carry the tax window flag and stay experimental and
+              revisable.
             </p>
             <p class="figure-caption">
-              Publisher headline absorbs the same window as final. The replica
-              never smooths through it, it flags it.
+              Publisher headline includes the same window as final. The replica
+              flags those months instead of smoothing over them.
             </p>
           </div>
           <div class="ledger-card" style={{ margin: "16px 0" }}>
@@ -125,21 +126,20 @@ export default function InflationPage(props: Props) {
               {validation()?.gate_pp} pp over {validation()?.months} months
             </p>
             <p class="figure-caption">
-              {validation()?.note} The flag is honest either way and never
-              blocks the build: within_gate or exceeds_gate_needs_explanation
-              both pass when the flag matches the recompute.
+              {validation()?.note} The flag never blocks the build: within_gate
+              and exceeds_gate_needs_explanation both pass when the flag
+              matches the recompute.
             </p>
           </div>
           <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>Curve context</h2>
             <p>
-              The funding curve beside this replica is a solved zero curve,
-              distinct from input YTM. Inputs price the bonds, zeros come from
-              the solved discounts.
+              The funding curve beside this replica is a solved zero curve, not
+              input YTM.
             </p>
             <p class="figure-caption">
-              Sparse instrument disclosure lists cashflows, dirty prices, and
-              reprice errors on the curve page. Degraded curve registers
+              Sparse instrument disclosure on the curve page lists cashflows,
+              dirty prices, and reprice errors, and degraded curve registers
               withhold repricing until settlement and anchors return. Method{" "}
               {props.snapshot?.observations.curve?.method ?? "method unknown"}.
             </p>

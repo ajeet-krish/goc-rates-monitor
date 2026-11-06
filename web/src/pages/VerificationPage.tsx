@@ -43,11 +43,11 @@ export default function VerificationPage(props: Props) {
           checks at {props.verify?.tolerance_bp} {props.verify?.tolerance_unit}
         </p>
       </Show>
-      <h2 class="hero-headline">Fail closed, with names.</h2>
+      <h2 class="hero-headline">Any failure blocks derived displays and the build.</h2>
       <p class="hero-dek">
-        Every check names its unit. Tolerance is {props.verify?.tolerance_bp ?? "1.0"}{" "}
-        {props.verify?.tolerance_unit ?? "basis_points"}. A single failure blocks
-        derived displays and the build. Checked at{" "}
+        Tolerance is {props.verify?.tolerance_bp ?? "1.0"}{" "}
+        {props.verify?.tolerance_unit ?? "basis_points"}, and every check names
+        its unit in its detail string. Checked at{" "}
         <span class="num">{props.verify?.checked_utc ?? "checked time unknown"}</span>{" "}
         (UTC) for snapshot <span class="num">{fmtShortSha(props.verify?.snapshot_sha256)}</span>.
       </p>
@@ -72,8 +72,8 @@ export default function VerificationPage(props: Props) {
             breaks: {breaksMethod()} (feed vintage {feedVintage()})
           </p>
           <p class="figure-caption">
-            Methods come from the snapshot beside the report, so drift between
-            code and data reads out here first.
+            Method ids come from the snapshot beside the report, so code and
+            data drift shows here first.
           </p>
         </div>
         <For each={CHECK_FAMILIES}>

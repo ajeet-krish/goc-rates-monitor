@@ -47,7 +47,7 @@ Keep functions small and pure where practical.
 | Phase 8.2 | Ten year reseal raised caps print date attribution workflow poll | Complete |
 | Phase 8.3 | Analysis engines range aggregation percentiles regimes | Complete |
 | Phase 8.4 | UI wiring selector shading captions | Complete |
-| Phase 8.5 | UI copy pass terminal style | Pending |
+| Phase 8.5 | UI copy pass terminal style | Complete |
 
 ## Deep Docs
 

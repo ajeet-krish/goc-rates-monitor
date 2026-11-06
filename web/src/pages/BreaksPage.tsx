@@ -55,7 +55,7 @@ export default function BreaksPage(props: Props) {
   return (
     <section aria-label="Breaks">
       <p class="hero-kicker">Breaks: switches suppress, never splice</p>
-      <h2 class="hero-headline">A named reason for every NA.</h2>
+      <h2 class="hero-headline">Day over day moves with named gates.</h2>
       <p class="hero-dek">
         Method <span class="num">benchmark_switch_dod_gate_v1</span> reads the
         pinned switch feed and gates each tenor day over day move as comparable,
@@ -218,11 +218,12 @@ export default function BreaksPage(props: Props) {
                 ]}
               />
               <p class="figure-caption">
-                Range {historyRangeLabel(props.history)}. Backfilled spans are
-                unverified (source derived:backfill_v1) and render dashed and
-                muted. Switch windows suppress day over day deltas to null with
-                gate switch_break, calendar gaps keep the number with a flag.
-                No adjusted history is published.
+                Source span {historyRangeLabel(props.history)}: all published
+                dates, not the selected window. Backfilled rows are unverified
+                (source derived:backfill_v1) and render dashed and muted.
+                Switch windows suppress day over day deltas to null with gate
+                switch_break, calendar gaps keep the number with a flag. No
+                adjusted history is published.
               </p>
             </Show>
           </div>

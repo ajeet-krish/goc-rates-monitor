@@ -31,7 +31,7 @@ export default function FailClosedDemo(props: { asof: string | null }) {
         <div class="alert" role="note" aria-label="Demo blocked notice">
           <h3>Derived displays blocked</h3>
           <p>
-            Demo mode stands in for a failed check. Every derived value below
+            Demo mode simulates a failed check. Every derived value below
             stays NA until every named check passes.
           </p>
         </div>

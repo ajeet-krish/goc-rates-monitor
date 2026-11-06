@@ -25,13 +25,12 @@ export default function MethodsPage(props: Props) {
     props.snapshot?.observations.breaks?.method ?? "method unknown";
   return (
     <section aria-label="Methods">
-      <p class="hero-kicker">Methods: what v1 claims and what it does not</p>
-      <h2 class="hero-headline">True bootstrap, stated plainly.</h2>
+      <p class="hero-kicker">Methods: v1 claims and exclusions</p>
+      <h2 class="hero-headline">Methods, assumptions, and limits.</h2>
       <p class="hero-dek">
-        This page renders the shared methods module, then pins the live method
-        ids, tolerance, and check count from the current snapshot and verify
-        report. Copy below is static and always readable, even when derived
-        displays are blocked.
+        Method sections below are static and stay readable when derived
+        displays are blocked. Live pins come from the current snapshot and
+        verify report: method ids, tolerance, and check count.
       </p>
       <div class="ledger-card">
         <h2>
@@ -116,7 +115,7 @@ export default function MethodsPage(props: Props) {
         <div class="ledger-card">
           <h2>Assumptions and consequences</h2>
           <table>
-            <caption>What v1 assumes and what follows</caption>
+            <caption>Assumption and consequence by topic</caption>
             <thead>
               <tr>
                 <th scope="col">Topic</th>
@@ -140,7 +139,7 @@ export default function MethodsPage(props: Props) {
         <div class="ledger-card">
           <h2>Limits and rationale</h2>
           <table>
-            <caption>Where v1 stops and why</caption>
+            <caption>Limit and rationale by topic</caption>
             <thead>
               <tr>
                 <th scope="col">Topic</th>
