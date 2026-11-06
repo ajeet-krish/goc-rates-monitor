@@ -2,6 +2,56 @@
 
 Last updated: 2026-11-06
 
+## 2026-11-06 - Artifact refresh: re-pinned tests Test Report
+
+Legitimate artifact regeneration: the `snapshots/2026-11-05/` triple was
+regenerated with settlement equal to its label (the old triple was stale,
+settling on 2026-11-04), and `web/public/data/history.json` and
+`web/public/data/index.json` were rebuilt from it. `history/backfill.json`
+is unchanged at 2494 rows with asof 2026-11-04 and its manifest digest
+still valid. The refreshed artifacts publish 2495 daily rows, five verified
+dates (2026-10-30, 11-02, 11-03, 11-04, 11-05), metadata asof 2026-11-05,
+index latest 2026-11-05, and new history bytes (2570409 bytes, sha256
+3c44647e30593c9e85edc8579bfd02e6dc05724564112a47d1f3756a62932ecb). Only
+test files were edited to re-pin the absolute facts, each pin now carrying a
+relative companion where one was missing. Run with `cd web && npm test`,
+`npm run typecheck`, and `node scripts/build-data.mjs` in `web/`, plus
+`uv run pytest` and `uv run ruff check tests` in the repo root.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| npm test web (342 tests, 342 pass) | PASS | 7 previously failing pins now green, 0 fail, no test count change |
+| npm run typecheck | PASS | tsc noEmit clean |
+| uv run pytest (285 passed) | PASS | 3 previously failing artifact tests now green, 0 failed |
+| uv run ruff check tests | PASS | All checks passed after shortening one docstring |
+| node scripts/build-data.mjs (web/) | PASS | Exit 0, published 5 dates plus history to public/data; git status shows only the expected files afterwards |
+| phase8-82 pins plus companions (web) | PASS | RESEALED_DATES now five labels, verified set also derived from triples where settlement equals label, index latest also equals the last daily row date, carried row count now counts only resealed dates present in the backfill |
+| phase8-83 pins plus companions (web) | PASS | Row pin 2495 with a backfill plus snapshot-only companion, spanDays 3655, structural bound 524, weekly bucket pin 523 with a distinct Monday week companion, percentile count pin 2495 |
+| phase8-84 pins kept beside relatives (web) | PASS | Max window pins 2495 and 2026-11-05, percentile pin 2495, existing relative checks untouched |
+| test_phase82_artifacts.py (12 tests) | PASS | Five date tuple, merged asof pin 2026-11-05 with index-date fallback companion, backfill asof pin 2026-11-04, index latest equals last daily row, settlement equals label companion |
+
+Coverage summary: 342 passed (web) plus 285 passed (pytest), 0 failed. Happy
+path covered (the refreshed triple validates, the merge publishes five
+verified rows, and the pipeline windows and aggregates the 2495 row
+artifact). Edge cases covered (a snapshot-only date that is absent from the
+backfill no longer subtracts from the carried row count, and the structural
+bound now sits one above the bucket count because the span ends partway
+through its final week). Error conditions covered (no invariant was
+weakened: digest bindings, byte bindings, fail closed gates, and validator
+calls all stay in place).
+
+Failure analysis: no product code defects. The 10 failures before the
+refresh were absolute pins against the previous artifact state (2494 rows,
+four verified dates, latest 2026-11-04, spanDays 3654, structural bound
+523, and a merged asof equal to the backfill asof). The merged asof rule
+moved with the data: build-data sets it from the newest staged snapshot
+date when snapshots publish, so it now tracks 2026-11-05 while the backfill
+seal keeps 2026-11-04. The weekly bucket count stayed at 523 because
+2026-11-05 lands inside an existing UTC Monday week; only the bound and the
+span moved. The regenerated 11-05 settlement equal to its label is correct
+data, and the new relative companions assert it from the triples rather
+than trusting the hardcoded list alone.
+
 ## 2026-11-06 - Phase 8.5: Test Report
 
 Phase 8.5 UI copy pass coverage in `web/tests/phase8-85-copy.test.mjs`

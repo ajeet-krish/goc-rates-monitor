@@ -1,12 +1,13 @@
 {
-  "generated_utc": "2026-11-05T23:06:22.295Z",
+  "generated_utc": "2026-11-06T21:07:37.647Z",
   "dates": [
     "2026-10-30",
     "2026-11-02",
     "2026-11-03",
-    "2026-11-04"
+    "2026-11-04",
+    "2026-11-05"
   ],
-  "latest": "2026-11-04",
+  "latest": "2026-11-05",
   "entries": {
     "2026-10-30": {
       "snapshot_sha256": "aaf5c13b155b276217329e347b3f0afc44b9a82fc89e0251524ee201acd397bf",
@@ -27,12 +28,17 @@
       "snapshot_sha256": "b7c99856312c3fb982f0ebb161c76104f605479e23ff00677045fed45e00c877",
       "verify_passed": true,
       "bytes_utf8": 41975
+    },
+    "2026-11-05": {
+      "snapshot_sha256": "1294a08b4939f42111319a5b0f01e511324e5975f8a73e8430020eba3861fbe3",
+      "verify_passed": true,
+      "bytes_utf8": 41967
     }
   },
   "history": {
-    "sha256": "598c6dac185afea2cc87a8200815cf16d35f1e6874cdf4f8efb6a5f4baf3c9f3",
-    "bytes_utf8": 2569322,
-    "daily_count": 2494,
+    "sha256": "3c44647e30593c9e85edc8579bfd02e6dc05724564112a47d1f3756a62932ecb",
+    "bytes_utf8": 2570409,
+    "daily_count": 2495,
     "cpi_count": 60,
     "trimmed_backfilled_count": 0
   }

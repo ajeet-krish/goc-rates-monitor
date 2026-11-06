@@ -27,8 +27,9 @@ const historyRaw = readFileSync(historyPath);
 const history = JSON.parse(historyRaw.toString("utf8"));
 const index = readJson(join(webRoot, "public", "data", "index.json"));
 
-// The four re-sealed snapshot triples published by Phase 8.2.
-const RESEALED_DATES = ["2026-10-30", "2026-11-02", "2026-11-03", "2026-11-04"];
+// The five re-sealed snapshot triples published by Phase 8.2, refreshed when
+// the 2026-11-05 triple regenerated with settlement equal to its label.
+const RESEALED_DATES = ["2026-10-30", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"];
 
 describe("phase8.2 re-sealed artifacts pass the client validators", () => {
   it("published history.json passes validateHistory", () => {
@@ -66,12 +67,24 @@ describe("phase8.2 re-sealed artifacts pass the client validators", () => {
     assert.equal(new Set(dates).size, dates.length);
   });
 
-  it("pins exactly the four re-sealed verified dates", () => {
+  it("pins exactly the five re-sealed verified dates", () => {
     const verified = history.daily.filter((row) => row.verified);
+    // Absolute pin for this refresh: the five re-sealed labels.
     assert.deepEqual(
       verified.map((row) => row.date),
       RESEALED_DATES
     );
+    // Relative companion: the verified set equals the staged snapshot labels
+    // whose curve.settlement_date matches the label, computed from the
+    // committed triples instead of a hardcoded list.
+    const settlementMatchedLabels = [];
+    for (const date of index.dates) {
+      const snapshot = readJson(join(repoRoot, "snapshots", date, "snapshot.json"));
+      const label = snapshot.metadata.snapshot_date;
+      const settlement = snapshot.observations.curve.settlement_date;
+      if (settlement === label) settlementMatchedLabels.push(label);
+    }
+    assert.deepEqual(verified.map((row) => row.date), settlementMatchedLabels);
     const indexShas = new Set(
       index.dates.map((date) => index.entries[date].snapshot_sha256)
     );
@@ -97,7 +110,12 @@ describe("phase8.2 re-sealed artifacts pass the client validators", () => {
     }
     const verifiedCount = history.daily.filter((row) => row.verified).length;
     assert.equal(carried + verifiedCount, history.daily.length);
-    assert.equal(carried, backfill.daily.length - RESEALED_DATES.length);
+    // Relative companion: carried rows equal the backfill rows whose dates are
+    // not among the re-sealed labels that actually sit in the backfill window
+    // (the 2026-11-05 label is snapshot only, so it never subtracts here).
+    const backfillDates = new Set(backfill.daily.map((row) => row.date));
+    const resealedInBackfill = RESEALED_DATES.filter((date) => backfillDates.has(date)).length;
+    assert.equal(carried, backfill.daily.length - resealedInBackfill);
   });
 
   it("keeps the sealed 60 CPI months with a zero trim count", () => {
@@ -119,6 +137,10 @@ describe("phase8.2 re-sealed artifacts pass the client validators", () => {
     assert.equal(index.history.cpi_count, history.cpi.length);
     assert.equal(index.latest, RESEALED_DATES[RESEALED_DATES.length - 1]);
     assert.deepEqual(index.dates, RESEALED_DATES);
+    // Relative companion: the index latest date tracks the last published
+    // daily row, whatever the refreshed artifact holds.
+    const lastRow = history.daily[history.daily.length - 1];
+    assert.equal(index.latest, lastRow.date, "index latest must equal the last daily row date");
   });
 
   it("pins the raised 2750 caps beside the re-sealed counts", () => {

@@ -7,7 +7,9 @@ rows spanning at least 9.5 calendar years with every row unverified and
 null snapshot sha, the manifest binds the file bytes, the sealed document
 roundtrips through the Python builder, and the merged history.json count
 equals backfill rows plus snapshot-only dates minus overlaps with exactly
-the four re-sealed verified dates and 60 CPI months.
+the five re-sealed verified dates and 60 CPI months. The 2026-11-05 triple
+regenerated with settlement equal to its label, so the merged asof follows
+the newest snapshot date while the backfill seal stays at 2026-11-04.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ SPAN_FLOOR_DAYS = 3469  # unit: days, 9.5 calendar years of sealed history
 FIRST_DATE_PIN = "2016-12-05"  # date, ten year window start for this re-seal
 ASOF_TOLERANCE_DAYS = 3  # unit: days, last print within 3 days of the asof
 EXPECTED_CPI_MONTHS = 60  # unit: count, sealed trailing CPI window
-EXPECTED_VERIFIED_DATES = ("2026-10-30", "2026-11-02", "2026-11-03", "2026-11-04")
+EXPECTED_VERIFIED_DATES = ("2026-10-30", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05")
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -133,10 +135,22 @@ def test_merged_history_count_matches_backfill_plus_snapshot_only_dates() -> Non
     assert backfill_dates <= set(history_dates), "every backfill date survives the merge"
 
 
-def test_merged_history_pins_the_four_resealed_verified_dates() -> None:
-    """Exactly the four re-sealed snapshots promote to verified rows."""
+def test_merged_history_pins_the_five_resealed_verified_dates() -> None:
+    """Exactly the five re-sealed snapshots promote to verified rows."""
     verified = [row for row in HISTORY["daily"] if row["verified"]]
+    # Absolute pin for this refresh: the five re-sealed labels.
     assert tuple(row["date"] for row in verified) == EXPECTED_VERIFIED_DATES
+    # Relative companion: the verified set equals the staged snapshot labels
+    # whose curve.settlement_date matches the label, read from the committed
+    # triples instead of a hardcoded list.
+    settlement_matched_labels = []
+    for date in INDEX["dates"]:
+        snapshot = _load(REPO_ROOT / "snapshots" / date / "snapshot.json")
+        label = snapshot["metadata"]["snapshot_date"]
+        settlement = snapshot["observations"]["curve"]["settlement_date"]
+        if settlement == label:
+            settlement_matched_labels.append(label)
+    assert tuple(row["date"] for row in verified) == tuple(settlement_matched_labels)
     index_shas = {INDEX["entries"][date]["snapshot_sha256"] for date in EXPECTED_VERIFIED_DATES}
     row_shas = {row["snapshot_sha256"] for row in verified}
     assert row_shas == index_shas, "verified rows must carry the committed snapshot shas"
@@ -163,10 +177,18 @@ def test_merged_history_keeps_the_sixty_cpi_months() -> None:
 
 
 def test_merged_history_metadata_and_exclusions_match_the_seal() -> None:
-    """The merged document keeps the backfill method, asof, and exclusion list."""
+    """The merged document keeps the backfill method and exclusions."""
     assert HISTORY["metadata"]["method"] == "history_merge_v1"
     assert HISTORY["metadata"]["schema_version"] == 1
-    assert HISTORY["metadata"]["asof"] == BACKFILL["metadata"]["asof"]
+    # Absolute pins for this refresh: the 2026-11-05 triple merged, so the
+    # merged asof moved to that label while the unchanged backfill seal keeps
+    # its own 2026-11-04 asof.
+    assert HISTORY["metadata"]["asof"] == "2026-11-05"
+    assert BACKFILL["metadata"]["asof"] == "2026-11-04"
+    # Relative companion: with staged snapshots published the merged asof is
+    # the newest index date, otherwise it falls back to the backfill asof.
+    expected_asof = INDEX["dates"][-1] if INDEX["dates"] else BACKFILL["metadata"]["asof"]
+    assert HISTORY["metadata"]["asof"] == expected_asof
     assert HISTORY["exclusions"] == BACKFILL["exclusions"]
     assert sorted(HISTORY["provenance"]) == sorted(BACKFILL["provenance"])
 
@@ -184,9 +206,12 @@ def test_index_history_entry_binds_the_published_history_bytes() -> None:
 
 
 def test_index_latest_and_dates_cover_the_resealed_snapshots() -> None:
-    """The index lists the four re-sealed dates with verify passing on each."""
+    """The index lists the five re-sealed dates with verify passing on each."""
     assert INDEX["latest"] == EXPECTED_VERIFIED_DATES[-1]
     assert tuple(INDEX["dates"]) == EXPECTED_VERIFIED_DATES
+    # Relative companion: the index latest date tracks the last published
+    # daily row, whatever the refreshed artifact holds.
+    assert HISTORY["daily"][-1]["date"] == INDEX["latest"]
     for date in EXPECTED_VERIFIED_DATES:
         entry = INDEX["entries"][date]
         assert entry["verify_passed"] is True

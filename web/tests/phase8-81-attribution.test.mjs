@@ -553,7 +553,7 @@ describe("build-data spreads mapping, overlap arbitration, and print window", ()
     assert.deepEqual(await publishedDates(sandbox), []);
   });
 
-  it("fails closed when an overlapping snapshot disagrees on a spread beyond 1.0 bp", async () => {
+  it("warns and lets the verified snapshot win when an overlapping snapshot disagrees on a spread beyond 1.0 bp", async () => {
     await writeBackfill(
       sandbox,
       backfillDoc(
@@ -567,7 +567,7 @@ describe("build-data spreads mapping, overlap arbitration, and print window", ()
       FULL_SPREAD_RECORDS[2],
       FULL_SPREAD_RECORDS[3],
     ];
-    await writeTriple(
+    const triple = await writeTriple(
       sandbox,
       "2026-11-04",
       benchmarkSnapshot("2026-11-04", BASE_YIELDS, "2026-11-02", {
@@ -576,13 +576,22 @@ describe("build-data spreads mapping, overlap arbitration, and print window", ()
       })
     );
     const result = await runBuild(sandbox);
-    assert.equal(result.code, 1);
-    assert.match(result.err, /spread tenor 2Y beyond 1\.0 bp/);
-    assert.match(result.err, /refusing to publish/);
-    assert.deepEqual(await publishedDates(sandbox), []);
+    assert.equal(result.code, 0, result.err);
+    assert.match(result.err, /history overlap on 2026-11-02 spread tenor 2Y beyond 1\.0 bp/);
+    assert.match(result.err, /\(snapshot -123 versus backfill -128\)/);
+    assert.match(result.err, /the incoming snapshot row wins \(verified precedence\)/);
+    assert.doesNotMatch(result.err, /refusing to publish/);
+    const history = await readJson(sandbox, "history.json");
+    const merged = history.daily.find((row) => row.date === "2026-11-02");
+    assert.equal(merged.verified, true);
+    assert.equal(merged.spreads_status, "ok");
+    assert.equal(merged.spreads_bp["2Y"], -123);
+    assert.equal(merged.snapshot_sha256, triple.sha);
+    assert.doesNotThrow(() => validateHistory(history));
+    assert.deepEqual(await publishedDates(sandbox), ["2026-11-04"]);
   });
 
-  it("fails closed when overlapping rows carry different spreads_status", async () => {
+  it("warns and lets the verified snapshot win when overlapping rows carry different spreads_status", async () => {
     await writeBackfill(
       sandbox,
       backfillDoc(
@@ -590,7 +599,7 @@ describe("build-data spreads mapping, overlap arbitration, and print window", ()
         [cpiRow("2026-09")]
       )
     );
-    await writeTriple(
+    const triple = await writeTriple(
       sandbox,
       "2026-11-04",
       benchmarkSnapshot("2026-11-04", BASE_YIELDS, "2026-11-02", {
@@ -599,10 +608,99 @@ describe("build-data spreads mapping, overlap arbitration, and print window", ()
       })
     );
     const result = await runBuild(sandbox);
-    assert.equal(result.code, 1);
-    assert.match(result.err, /spreads_status ok versus snapshot partial/);
-    assert.match(result.err, /refusing to publish/);
-    assert.deepEqual(await publishedDates(sandbox), []);
+    assert.equal(result.code, 0, result.err);
+    assert.match(result.err, /history overlap on 2026-11-02 spreads_status ok versus snapshot partial/);
+    assert.match(result.err, /the incoming snapshot row wins \(verified precedence\)/);
+    assert.doesNotMatch(result.err, /refusing to publish/);
+    const history = await readJson(sandbox, "history.json");
+    const merged = history.daily.find((row) => row.date === "2026-11-02");
+    assert.equal(merged.verified, true);
+    assert.equal(merged.spreads_status, "partial");
+    assert.equal(merged.spreads_bp["2Y"], -128);
+    assert.equal(merged.spreads_bp["10Y"], null);
+    assert.equal(merged.snapshot_sha256, triple.sha);
+    assert.doesNotThrow(() => validateHistory(history));
+  });
+
+  it("keeps the fresh snapshot spread when a stale snapshot settling on the same print date differs by 2 bp", async () => {
+    await writeBackfill(
+      sandbox,
+      backfillDoc(
+        [
+          dailyRow("2026-11-03", BASE_YIELDS),
+          dailyRow("2026-11-04", BASE_YIELDS),
+        ],
+        [cpiRow("2026-09")]
+      )
+    );
+    const fresh = await writeTriple(
+      sandbox,
+      "2026-11-04",
+      benchmarkSnapshot("2026-11-04", BASE_YIELDS, "2026-11-04", {
+        status: "ok",
+        records: [{ tenor: "10Y", spread_bp: -118 }],
+      })
+    );
+    await writeTriple(
+      sandbox,
+      "2026-11-05",
+      benchmarkSnapshot("2026-11-05", BASE_YIELDS, "2026-11-04", {
+        status: "ok",
+        records: [{ tenor: "10Y", spread_bp: -120 }],
+      })
+    );
+    const result = await runBuild(sandbox);
+    assert.equal(result.code, 0, result.err);
+    assert.match(result.err, /settles on 2026-11-04/);
+    assert.match(result.err, /history overlap on 2026-11-04 spread tenor 10Y beyond 1\.0 bp/);
+    assert.match(result.err, /\(snapshot -120 versus snapshot -118\)/);
+    assert.match(result.err, /the existing verified row wins \(first writer\)/);
+    assert.match(result.err, /shares print date 2026-11-04/);
+    assert.doesNotMatch(result.err, /refusing to publish/);
+    const history = await readJson(sandbox, "history.json");
+    assert.deepEqual(
+      history.daily.map((row) => row.date),
+      ["2026-11-03", "2026-11-04"]
+    );
+    const merged = history.daily[1];
+    assert.equal(merged.verified, true);
+    assert.equal(merged.spreads_status, "partial");
+    assert.equal(merged.spreads_bp["10Y"], -118);
+    assert.equal(merged.snapshot_sha256, fresh.sha);
+    assert.doesNotThrow(() => validateHistory(history));
+    const index = await readJson(sandbox, "index.json");
+    assert.deepEqual(index.dates, ["2026-11-04", "2026-11-05"]);
+  });
+
+  it("lets a verified snapshot overwrite a backfill spread difference after warning", async () => {
+    await writeBackfill(
+      sandbox,
+      backfillDoc(
+        [dailyRow("2026-11-04", BASE_YIELDS, { status: "partial", values: { "10Y": -115 } })],
+        [cpiRow("2026-09")]
+      )
+    );
+    const snapshot = await writeTriple(
+      sandbox,
+      "2026-11-04",
+      benchmarkSnapshot("2026-11-04", BASE_YIELDS, "2026-11-04", {
+        status: "ok",
+        records: [{ tenor: "10Y", spread_bp: -118 }],
+      })
+    );
+    const result = await runBuild(sandbox);
+    assert.equal(result.code, 0, result.err);
+    assert.match(result.err, /history overlap on 2026-11-04 spread tenor 10Y beyond 1\.0 bp/);
+    assert.match(result.err, /\(snapshot -118 versus backfill -115\)/);
+    assert.match(result.err, /the incoming snapshot row wins \(verified precedence\)/);
+    assert.doesNotMatch(result.err, /refusing to publish/);
+    const history = await readJson(sandbox, "history.json");
+    const merged = history.daily.find((row) => row.date === "2026-11-04");
+    assert.equal(merged.verified, true);
+    assert.equal(merged.spreads_status, "partial");
+    assert.equal(merged.spreads_bp["10Y"], -118);
+    assert.equal(merged.snapshot_sha256, snapshot.sha);
+    assert.doesNotThrow(() => validateHistory(history));
   });
 
   it("keeps the first verified CPI writer for a shared month after the agreement check", async () => {

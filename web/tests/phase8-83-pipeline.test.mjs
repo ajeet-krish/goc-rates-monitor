@@ -239,6 +239,13 @@ describe("phase8.3 cross module pipeline on a synthetic history", () => {
 // The same pipeline at Max range on the real committed artifact.
 const historyPath = join(webRoot, "public", "data", "history.json");
 const history = JSON.parse(readFileSync(historyPath, "utf8"));
+// Committed source artifacts, read for the relative row count companion.
+const backfill = JSON.parse(
+  readFileSync(join(webRoot, "..", "history", "backfill.json"), "utf8")
+);
+const index = JSON.parse(
+  readFileSync(join(webRoot, "public", "data", "index.json"), "utf8")
+);
 const dailyRows = history.daily;
 const dailyPoints = slopeSeries(history, "2Y_10Y");
 const firstDayX = dailyPoints[0].x;
@@ -248,15 +255,25 @@ const finiteSlopeCount = dailyPoints.length - nullSlopeCount;
 const spanDays = (lastDayX - firstDayX) / DAY_SEC + 1;
 
 describe("phase8.3 real published history pipeline at Max range", () => {
-  it("reads the committed 2494 row history with a finite 2Y_10Y slope on every row", () => {
-    assert.equal(dailyRows.length, 2494);
-    assert.equal(history.metadata.daily_count, 2494);
+  it("reads the committed 2495 row history with a finite 2Y_10Y slope on every row", () => {
+    // Absolute pins for this artifact refresh: 2495 daily rows.
+    assert.equal(dailyRows.length, 2495);
+    assert.equal(history.metadata.daily_count, 2495);
+    // Relative companion: daily rows equal backfill rows plus snapshot label
+    // dates that are absent from the backfill, computed from the artifacts.
+    const backfillDates = new Set(backfill.daily.map((row) => row.date));
+    const snapshotOnly = index.dates.filter((date) => !backfillDates.has(date));
+    assert.equal(
+      dailyRows.length,
+      backfill.daily.length + snapshotOnly.length,
+      "merged rows = backfill rows + snapshot-only dates"
+    );
     assert.equal(
       nullSlopeCount,
       0,
       "every committed row carries a 2Y_10Y slope"
     );
-    assert.equal(finiteSlopeCount, 2494);
+    assert.equal(finiteSlopeCount, 2495);
     assert.equal(
       rangeCutoff("Max", lastDayX),
       null,
@@ -276,12 +293,13 @@ describe("phase8.3 real published history pipeline at Max range", () => {
       "weekly buckets must stay under MAX_CHART_POINTS for the Phase 8.4 contract"
     );
     // The consecutive day model gives ceil(2750 / 7) + 1 = 394, but the
-    // committed history holds business days only: 2494 rows span 3654
-    // calendar days and touch every UTC Monday week. The structural bound is
-    // ceil(span / 7) + 1, and the current artifact lands exactly on it.
+    // committed history holds business days only: 2495 rows span 3655
+    // calendar days and touch 523 UTC Monday weeks. The structural bound is
+    // ceil(span / 7) + 1 = 524, and the current artifact lands one under it
+    // because the span ends partway through its final week.
     const structuralBound = Math.ceil(spanDays / 7) + 1;
-    assert.equal(spanDays, 3654);
-    assert.equal(structuralBound, 523);
+    assert.equal(spanDays, 3655);
+    assert.equal(structuralBound, 524);
     assert.ok(
       weekly.length <= structuralBound,
       "expected at most " + structuralBound + " weekly buckets, got " + weekly.length
@@ -290,6 +308,24 @@ describe("phase8.3 real published history pipeline at Max range", () => {
       weekly.length,
       523,
       "current artifact pin: business days across the ten year span"
+    );
+    // Relative companion: one bucket per UTC Monday week touched by the
+    // finite daily points, mirroring the aggregator's week start rule.
+    const weekStarts = new Set(
+      dailyPoints
+        .filter((point) => typeof point.y === "number" && Number.isFinite(point.y))
+        .map((point) => {
+          const d = new Date(point.x * 1000);
+          const daysSinceMonday = (d.getUTCDay() + 6) % 7;
+          const dayStart =
+            Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
+          return dayStart - daysSinceMonday * DAY_SEC;
+        })
+    );
+    assert.equal(
+      weekly.length,
+      weekStarts.size,
+      "weekly buckets must equal the distinct UTC Monday weeks in the span"
     );
     const xs = weekly.map((point) => point.x);
     assert.deepEqual(xs, [...xs].sort((a, b) => a - b));
@@ -302,8 +338,8 @@ describe("phase8.3 real published history pipeline at Max range", () => {
     assert.equal(summary.count, dailyRows.length - nullSlopeCount);
     assert.equal(
       summary.count,
-      2494,
-      "2494 rows minus zero rows with a null slope"
+      2495,
+      "2495 rows minus zero rows with a null slope"
     );
     assert.ok(summary.p10 <= summary.p50, "p10 must not exceed p50");
     assert.ok(summary.p50 <= summary.p90, "p50 must not exceed p90");

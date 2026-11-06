@@ -95553,6 +95553,44 @@
         "5Y": 3.43
       },
       "yields_unit": "percent"
+    },
+    {
+      "calendar_gap": false,
+      "date": "2026-11-05",
+      "input_digest_sha256": null,
+      "row_digest": "d11decc5864fc3236b164f0d55d016d68a18c0ddbb35d7a51c2c3182a7f4c15b",
+      "slopes_bp": {
+        "10Y_30Y": 34.999999999999964,
+        "2Y_10Y": 50.0,
+        "2Y_5Y": 22.00000000000002,
+        "5Y_30Y": 62.99999999999994
+      },
+      "slopes_unit": "basis_points",
+      "snapshot_sha256": "1294a08b4939f42111319a5b0f01e511324e5975f8a73e8430020eba3861fbe3",
+      "source": "derived:history_verified_v1",
+      "spreads_bp": {
+        "10Y": -120.00000000000001,
+        "2Y": -136.0,
+        "30Y": -124.00000000000003,
+        "5Y": -126.00000000000003
+      },
+      "spreads_status": "ok",
+      "spreads_unit": "basis_points",
+      "switch_by_tenor": {
+        "10Y": false,
+        "2Y": false,
+        "30Y": false,
+        "5Y": false
+      },
+      "switch_in_window": false,
+      "verified": true,
+      "yields_percent": {
+        "10Y": 3.67,
+        "2Y": 3.17,
+        "30Y": 4.02,
+        "5Y": 3.39
+      },
+      "yields_unit": "percent"
     }
   ],
   "exclusions": [
@@ -95562,10 +95600,10 @@
     }
   ],
   "metadata": {
-    "asof": "2026-11-04",
+    "asof": "2026-11-05",
     "cpi_count": 60.0,
     "cpi_count_unit": "count",
-    "daily_count": 2494.0,
+    "daily_count": 2495.0,
     "daily_count_unit": "count",
     "method": "history_merge_v1",
     "schema_version": 1.0

@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "created_utc": "2026-11-06T13:17:34+00:00",
+    "created_utc": "2026-11-06T20:37:26+00:00",
     "schema_version": 1,
     "snapshot_date": "2026-11-05"
   },
@@ -1089,7 +1089,7 @@
           "quality": "observed",
           "source_id": "valet:BD.CDN.10YR.DQ.YLD",
           "unit": "percent",
-          "value": 3.7
+          "value": 3.67
         },
         "valet_label": "Benchmark bond yield, 10-year"
       },
@@ -1098,7 +1098,7 @@
           "quality": "observed",
           "source_id": "valet:BD.CDN.2YR.DQ.YLD",
           "unit": "percent",
-          "value": 3.22
+          "value": 3.17
         },
         "valet_label": "Benchmark bond yield, 2-year"
       },
@@ -1107,7 +1107,7 @@
           "quality": "observed",
           "source_id": "valet:BD.CDN.LONG.DQ.YLD",
           "unit": "percent",
-          "value": 4.04
+          "value": 4.02
         },
         "valet_label": "Benchmark bond yield, long-term"
       },
@@ -1116,7 +1116,7 @@
           "quality": "observed",
           "source_id": "valet:BD.CDN.5YR.DQ.YLD",
           "unit": "percent",
-          "value": 3.43
+          "value": 3.39
         },
         "valet_label": "Benchmark bond yield, 5-year"
       }
@@ -1205,26 +1205,26 @@
       "feed_source": "bench_CDN.pdf",
       "feed_vintage": "2026-11-01",
       "method": "benchmark_switch_dod_gate_v1",
-      "print_date": "2026-11-04",
+      "print_date": "2026-11-05",
       "records": [
         {
           "calendar_gap": false,
-          "current_date": "2026-11-04",
-          "current_yield_percent": 3.22,
+          "current_date": "2026-11-05",
+          "current_yield_percent": 3.17,
           "current_yield_unit": "percent",
-          "dod_bp": -3.999999999999959,
+          "dod_bp": -5.000000000000027,
           "dod_quantity": {
             "quality": "observed",
             "source_id": "derived:dod_gate",
             "unit": "basis_points",
-            "value": -3.999999999999959
+            "value": -5.000000000000027
           },
           "dod_unit": "basis_points",
           "gate": "comparable",
-          "history_count": 2000,
+          "history_count": 2750,
           "history_count_unit": "count",
-          "prev_date": "2026-11-03",
-          "prev_yield_percent": 3.26,
+          "prev_date": "2026-11-04",
+          "prev_yield_percent": 3.22,
           "prev_yield_unit": "percent",
           "source_id": "derived:dod_gate",
           "switch_in_window": false,
@@ -1232,22 +1232,22 @@
         },
         {
           "calendar_gap": false,
-          "current_date": "2026-11-04",
-          "current_yield_percent": 3.43,
+          "current_date": "2026-11-05",
+          "current_yield_percent": 3.39,
           "current_yield_unit": "percent",
-          "dod_bp": -6.000000000000005,
+          "dod_bp": -4.0000000000000036,
           "dod_quantity": {
             "quality": "observed",
             "source_id": "derived:dod_gate",
             "unit": "basis_points",
-            "value": -6.000000000000005
+            "value": -4.0000000000000036
           },
           "dod_unit": "basis_points",
           "gate": "comparable",
-          "history_count": 2000,
+          "history_count": 2750,
           "history_count_unit": "count",
-          "prev_date": "2026-11-03",
-          "prev_yield_percent": 3.49,
+          "prev_date": "2026-11-04",
+          "prev_yield_percent": 3.43,
           "prev_yield_unit": "percent",
           "source_id": "derived:dod_gate",
           "switch_in_window": false,
@@ -1255,22 +1255,22 @@
         },
         {
           "calendar_gap": false,
-          "current_date": "2026-11-04",
-          "current_yield_percent": 3.7,
+          "current_date": "2026-11-05",
+          "current_yield_percent": 3.67,
           "current_yield_unit": "percent",
-          "dod_bp": -6.999999999999984,
+          "dod_bp": -3.000000000000025,
           "dod_quantity": {
             "quality": "observed",
             "source_id": "derived:dod_gate",
             "unit": "basis_points",
-            "value": -6.999999999999984
+            "value": -3.000000000000025
           },
           "dod_unit": "basis_points",
           "gate": "comparable",
-          "history_count": 2000,
+          "history_count": 2750,
           "history_count_unit": "count",
-          "prev_date": "2026-11-03",
-          "prev_yield_percent": 3.77,
+          "prev_date": "2026-11-04",
+          "prev_yield_percent": 3.7,
           "prev_yield_unit": "percent",
           "source_id": "derived:dod_gate",
           "switch_in_window": false,
@@ -1278,22 +1278,22 @@
         },
         {
           "calendar_gap": false,
-          "current_date": "2026-11-04",
-          "current_yield_percent": 4.04,
+          "current_date": "2026-11-05",
+          "current_yield_percent": 4.02,
           "current_yield_unit": "percent",
-          "dod_bp": -4.999999999999982,
+          "dod_bp": -2.000000000000046,
           "dod_quantity": {
             "quality": "observed",
             "source_id": "derived:dod_gate",
             "unit": "basis_points",
-            "value": -4.999999999999982
+            "value": -2.000000000000046
           },
           "dod_unit": "basis_points",
           "gate": "comparable",
-          "history_count": 2000,
+          "history_count": 2750,
           "history_count_unit": "count",
-          "prev_date": "2026-11-03",
-          "prev_yield_percent": 4.09,
+          "prev_date": "2026-11-04",
+          "prev_yield_percent": 4.04,
           "prev_yield_unit": "percent",
           "source_id": "derived:dod_gate",
           "switch_in_window": false,
@@ -1305,10 +1305,10 @@
       "threshold_unit": "basis_points"
     },
     "carry": {
-      "carry_roll_bp": 92.35595817128517,
+      "carry_roll_bp": 91.62667100368948,
       "horizon_years": 0.25,
-      "yield_at_maturity_percent": 3.7257260959066674,
-      "yield_at_rolled_tenor_percent": 3.717854153642852
+      "yield_at_maturity_percent": 3.6978539592494197,
+      "yield_at_rolled_tenor_percent": 3.6896571794739597
     },
     "corra": {
       "date_role": "value_date_lags_pub_date",
@@ -1322,31 +1322,31 @@
     "curve": {
       "anchors": [
         {
-          "discount": 0.9382324218750617,
+          "discount": 0.9392089843750608,
           "discount_unit": "unitless_ratio",
           "payment_date": "2028-11-01",
-          "years_from_settlement": 1.9945205479452055,
+          "years_from_settlement": 1.9917808219178081,
           "years_unit": "duration_years"
         },
         {
-          "discount": 0.8483261168004598,
+          "discount": 0.8500116467477392,
           "discount_unit": "unitless_ratio",
           "payment_date": "2031-09-01",
-          "years_from_settlement": 4.8273972602739725,
+          "years_from_settlement": 4.824657534246575,
           "years_unit": "duration_years"
         },
         {
-          "discount": 0.7021058437388341,
+          "discount": 0.7040196561504904,
           "discount_unit": "unitless_ratio",
           "payment_date": "2036-06-01",
-          "years_from_settlement": 9.580821917808219,
+          "years_from_settlement": 9.578082191780823,
           "years_unit": "duration_years"
         },
         {
-          "discount": 0.2804309473533185,
+          "discount": 0.28205474993784413,
           "discount_unit": "unitless_ratio",
           "payment_date": "2057-12-01",
-          "years_from_settlement": 31.095890410958905,
+          "years_from_settlement": 31.09315068493151,
           "years_unit": "duration_years"
         }
       ],
@@ -1356,25 +1356,25 @@
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "unitless_ratio",
-          "value": 0.7021058437388341
+          "value": 0.7040196561504904
         },
         "2Y": {
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "unitless_ratio",
-          "value": 0.9382324218750617
+          "value": 0.9392089843750608
         },
         "30Y": {
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "unitless_ratio",
-          "value": 0.2804309473533185
+          "value": 0.28205474993784413
         },
         "5Y": {
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "unitless_ratio",
-          "value": 0.8483261168004598
+          "value": 0.8500116467477392
         }
       },
       "instruments": [
@@ -1384,16 +1384,16 @@
           "coupon_unit": "percent",
           "dirty_price": {
             "unit": "price_units_per_100_face",
-            "value": 99.5952242228414
+            "value": 99.69945475309582
           },
           "maturity_date": "2028-11-01",
           "reprice_error_bp": {
             "unit": "bp",
-            "value": 0.4434065823943456
+            "value": 0.7113093416592164
           },
           "source_id": "derived:curve",
           "tenor": "2Y",
-          "yield_percent": 3.22,
+          "yield_percent": 3.17,
           "yield_unit": "percent_yield"
         },
         {
@@ -1402,16 +1402,16 @@
           "coupon_unit": "percent",
           "dirty_price": {
             "unit": "price_units_per_100_face",
-            "value": 98.61806320058822
+            "value": 98.80198987671216
           },
           "maturity_date": "2031-09-01",
           "reprice_error_bp": {
             "unit": "bp",
-            "value": 0.07927439618384824
+            "value": 0.025541256479755248
           },
           "source_id": "derived:curve",
           "tenor": "5Y",
-          "yield_percent": 3.43,
+          "yield_percent": 3.39,
           "yield_unit": "percent_yield"
         },
         {
@@ -1420,16 +1420,16 @@
           "coupon_unit": "percent",
           "dirty_price": {
             "unit": "price_units_per_100_face",
-            "value": 97.76201472581393
+            "value": 98.00720325640445
           },
           "maturity_date": "2036-06-01",
           "reprice_error_bp": {
             "unit": "bp",
-            "value": 0.8841471997797612
+            "value": 0.047251416721394435
           },
           "source_id": "derived:curve",
           "tenor": "10Y",
-          "yield_percent": 3.7,
+          "yield_percent": 3.67,
           "yield_unit": "percent_yield"
         },
         {
@@ -1438,16 +1438,16 @@
           "coupon_unit": "percent",
           "dirty_price": {
             "unit": "price_units_per_100_face",
-            "value": 91.933367757499
+            "value": 92.27288697868605
           },
           "maturity_date": "2057-12-01",
           "reprice_error_bp": {
             "unit": "bp",
-            "value": 0.21785383737977781
+            "value": 0.8563075204648385
           },
           "source_id": "derived:curve",
           "tenor": "30Y",
-          "yield_percent": 4.04,
+          "yield_percent": 4.02,
           "yield_unit": "percent_yield"
         }
       ],
@@ -1455,73 +1455,73 @@
       "is_zero": true,
       "knots": [
         {
-          "discount": 0.9382324218750617,
+          "discount": 0.9392089843750608,
           "discount_unit": "unitless_ratio",
           "source_id": "derived:curve",
           "tenor": "2Y",
           "tenor_unit": "duration_years",
-          "tenor_years": 1.9945205479452055,
-          "yield_percent": 3.22,
+          "tenor_years": 1.9917808219178081,
+          "yield_percent": 3.17,
           "yield_unit": "percent_yield"
         },
         {
-          "discount": 0.8483261168004598,
+          "discount": 0.8500116467477392,
           "discount_unit": "unitless_ratio",
           "source_id": "derived:curve",
           "tenor": "5Y",
           "tenor_unit": "duration_years",
-          "tenor_years": 4.8273972602739725,
-          "yield_percent": 3.43,
+          "tenor_years": 4.824657534246575,
+          "yield_percent": 3.39,
           "yield_unit": "percent_yield"
         },
         {
-          "discount": 0.7021058437388341,
+          "discount": 0.7040196561504904,
           "discount_unit": "unitless_ratio",
           "source_id": "derived:curve",
           "tenor": "10Y",
           "tenor_unit": "duration_years",
-          "tenor_years": 9.580821917808219,
-          "yield_percent": 3.7,
+          "tenor_years": 9.578082191780823,
+          "yield_percent": 3.67,
           "yield_unit": "percent_yield"
         },
         {
-          "discount": 0.2804309473533185,
+          "discount": 0.28205474993784413,
           "discount_unit": "unitless_ratio",
           "source_id": "derived:curve",
           "tenor": "30Y",
           "tenor_unit": "duration_years",
-          "tenor_years": 31.095890410958905,
-          "yield_percent": 4.04,
+          "tenor_years": 31.09315068493151,
+          "yield_percent": 4.02,
           "yield_unit": "percent_yield"
         }
       ],
       "long_proxy_note": "30Y tenor used directly",
       "method": "true_bootstrap_semiannual_log_discount_v1",
-      "settlement_date": "2026-11-04",
+      "settlement_date": "2026-11-05",
       "zero_yields": {
         "10Y": {
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "percent_yield",
-          "value": 3.7257260959066674
+          "value": 3.6978539592494197
         },
         "2Y": {
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "percent_yield",
-          "value": 3.2223195811472483
+          "value": 3.1737214932376467
         },
         "30Y": {
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "percent_yield",
-          "value": 4.130813052230575
+          "value": 4.112229099601361
         },
         "5Y": {
           "quality": "observed",
           "source_id": "derived:curve",
           "unit": "percent_yield",
-          "value": 3.4366212145872765
+          "value": 3.3967452646627816
         }
       }
     },
@@ -1530,11 +1530,11 @@
       "observation_date": "2026-11-04"
     },
     "risk": {
-      "dv01_per_million": 436.54904367473057,
-      "modified_duration_years": 4.426699721594226,
-      "price": 98.61727045662639,
-      "tenor_years": 4.8273972602739725,
-      "yield_percent": 3.43
+      "dv01_per_million": 437.21869922279706,
+      "modified_duration_years": 4.425212792002681,
+      "price": 98.80173446414736,
+      "tenor_years": 4.824657534246575,
+      "yield_percent": 3.39
     },
     "spreads": {
       "reason": null,
@@ -1579,7 +1579,7 @@
       "status": "ok"
     },
     "staleness": {
-      "max_age_business_days": 1,
+      "max_age_business_days": 0,
       "unit": "business_days"
     },
     "statcan": {
@@ -1594,27 +1594,27 @@
   },
   "provenance": {
     "benchmark_switches": {
-      "retrieved_utc": "2026-11-06T13:17:33+00:00",
+      "retrieved_utc": "2026-11-06T20:37:26+00:00",
       "sha256": "beebda0550350a07e3d792124cfd96f1c905656d5a6bd75ac7d2e3951bb7b774",
       "source_url": "https://www.bankofcanada.ca/stats/assets/pdf/bench_CDN.pdf",
       "vintage": "2026-11-01"
     },
     "fred": {
-      "retrieved_utc": "2026-11-06T13:17:33+00:00",
+      "retrieved_utc": "2026-11-06T20:37:26+00:00",
       "source_url": "https://api.stlouisfed.org/fred/series/observations",
       "vintage": "2026-11-04"
     },
     "statcan_cpi": {
       "reason": "CPI bulk agreement failed: basket aggregate for 'C01' 1.8700 disagrees with registry 2.4000 beyond 0.0300 pp",
-      "retrieved_utc": "2026-11-06T13:17:34+00:00",
+      "retrieved_utc": "2026-11-06T20:37:26+00:00",
       "source_url": "https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/18100004/en",
       "status": "missing",
       "vintage": "2025-05"
     },
     "valet": {
-      "retrieved_utc": "2026-11-06T13:17:33+00:00",
+      "retrieved_utc": "2026-11-06T20:37:26+00:00",
       "source_url": "https://www.bankofcanada.ca/valet/observations/group/bond_yields_benchmark/json",
-      "vintage": "2026-11-04"
+      "vintage": "2026-11-05"
     }
   },
   "warnings": [

@@ -467,11 +467,11 @@ describe("phase8.4 wiring on the committed history artifact", () => {
   it("windows the published history at Max without a cutoff", () => {
     // Absolute pins match the project convention of pinning the artifact;
     // a future refresh phase migrates these to relative checks first.
-    assert.equal(published.daily.length, 2494);
-    assert.equal(latestDailyEpoch(published), day("2026-11-04"));
+    assert.equal(published.daily.length, 2495);
+    assert.equal(latestDailyEpoch(published), day("2026-11-05"));
     const win = historyWindow(published, "Max");
     assert.equal(win.cutoff, null);
-    assert.equal(win.rows.length, 2494);
+    assert.equal(win.rows.length, 2495);
     // Relative checks that survive an artifact refresh with a new row count.
     assert.ok(published.daily.length > 0, "the artifact carries daily rows");
     assert.equal(
@@ -525,10 +525,10 @@ describe("phase8.4 wiring on the committed history artifact", () => {
     assert.ok(summary);
     assert.equal(
       summary.count,
-      2494,
+      2495,
       "the 2Y_10Y slope is finite on every published row"
     );
-    // Relative check alongside the 2494 pin: the percentile count equals
+    // Relative check alongside the 2495 pin: the percentile count equals
     // the unfiltered Max window row count, whatever the artifact holds.
     const maxWin = historyWindow(published, "Max");
     assert.equal(
