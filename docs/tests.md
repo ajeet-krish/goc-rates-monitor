@@ -1,6 +1,56 @@
 # GoC Test Results
 
-Last updated: 2026-11-05
+Last updated: 2026-11-06
+
+## 2026-11-06 - Phase 8.4: Test Report
+
+Phase 8.4 review follow up coverage in `web/tests/phase8-84-wiring.test.mjs`
+(now 27 tests, 2 new plus 3 extended). Closes four review advisories: Breaks
+added to the shading negative assertion, a defense in depth non finite
+caption guard test, relative structural assertions beside the artifact
+pins, and a keyboard contract source test. Run with `cd web && npm test`,
+`npm run typecheck`, and `npm run build` in
+`/Users/ajeet/Projects/goc-rates-monitor/web`. The build ran
+`build:data` and rewrote `web/public/data/index.json`, restored from git
+afterwards; nothing committed.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| npm test web (330 passed) | PASS | 55 suites, 0 fail, 328 prior plus 2 new phase 8.4 tests |
+| npm run typecheck | PASS | tsc noEmit clean, exit 0 |
+| npm run build | PASS | vite build clean, 62 modules, dist/index.html plus 404.html plus 18 assets emitted |
+| shading negative covers BreaksPage (extended) | PASS | FundingPage, InflationPage, and BreaksPage all hold no bands prop, CurvePage still carries exactly two bands plus the legend line |
+| never throws on a non finite latest or rank (new) | PASS | NaN, positive Infinity, and negative Infinity latest plus NaN rank all pass percentileCaption without throwing, guard is defense in depth only |
+| Max window relative checks (extended) | PASS | Pins 2494 rows and latest 2026-11-04 kept, plus Max window row count equals published daily count and latest epoch equals the last row date |
+| weekly buckets under chart cap (extended) | PASS | Bucket total and percentile count both compared against MAX_CHART_POINTS parsed from Chart.tsx source and the Max window row count, 2494 pin kept |
+| keyboard branch source contract (new) | PASS | ArrowDown, ArrowUp, forward and backward modulo wrap math, Home and End jumps, preventDefault, roving tabindex ternary, focus move, and out of range guard all pinned in RangeSelector source |
+
+Coverage summary: 330 passed (web), 0 failed. The phase 8.4 file holds 27
+tests across 6 suites. Happy path covered (range window, captions, bands,
+CPI, artifact wiring, source wiring all green). Edge cases covered (non
+finite caption inputs, artifact refresh relative checks, keyboard wrap
+math presence). Error conditions covered (absent history bands, thin
+window caption, out of range keyboard index guard).
+
+Failure analysis: no product code defects and no test failures; all 27
+phase 8.4 tests pass. Two honest gaps recorded instead of forced failures.
+First, `percentileCaption` in `web/src/lib/history-window.ts` lines 191 and
+197 checks `summary.latest === null` only, so a non finite latest would
+print NaN or Infinity in the caption rather than falling back to Latest
+unavailable in this range; a `Number.isFinite` guard is absent. This is a
+product gap for a future phase: `percentileSummary` only ever produces a
+finite latest or null today, so the path is unreachable from the current
+pipeline and the new test asserts non throwing behavior only, not the
+printed string, so a future fix will not break it. Second, the
+RangeSelector keyboard contract (roving tabindex, arrow wrap, Home and End)
+has no runtime coverage because the project has no DOM test framework and
+the wrap index math is inline and unexported, so extracting it would mean
+touching the component; the new source test pins every branch and manual
+browser verification remains the runtime check. Recurring pattern for other
+agents: the absolute artifact pins (2494 rows, latest 2026-11-04, 2494
+percentile count) drift when a daily run lands a new snapshot date, and the
+new relative checks (Max window count, last row date, chart cap from
+source) are the assertions to migrate to when a future phase repins.
 
 ## 2026-11-05 - Phase 8.3: Test Report
 

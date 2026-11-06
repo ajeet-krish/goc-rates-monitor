@@ -1,16 +1,26 @@
 import { Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
+import RangeSelector from "../components/RangeSelector";
 import SectionState from "../components/SectionState";
 import type { HistoryDoc, SnapshotDoc } from "../lib/types";
 import { missingZeroTenors, zeroCurvePoints } from "../lib/curve-points";
 import { historyRangeLabel } from "../lib/history-series";
+import { overlayCurves, zeroSeries } from "../lib/history";
 import {
-  overlayCurves,
-  splitSeries,
-  zeroSeries,
-} from "../lib/history";
+  aggregationNote,
+  historyWindow,
+  joinNote,
+  percentileCaption,
+  windowBands,
+  windowSeries,
+} from "../lib/history-window";
+import { rangeKey } from "../lib/history-range";
+import { percentileSummary } from "../lib/percentiles";
 import { fmtBp, fmtNum, fmtYieldPct } from "../lib/format";
+
+/** One legend line, shared by the yield and the slope chart. */
+const BAND_NOTE = "Shaded: 2s10s inverted (slope below 0 bp).";
 
 interface Props {
   snapshot: SnapshotDoc | null;
@@ -79,9 +89,17 @@ export default function CurvePage(props: Props) {
         delta: !hasCompare() ? "NA" : fmtBp(row.deltaBp),
       };
     });
-  const twoY = () => splitSeries(props.history, (row) => row.yields_percent["2Y"]);
-  const tenY = () => splitSeries(props.history, (row) => row.yields_percent["10Y"]);
-  const slope210 = () => splitSeries(props.history, (row) => row.slopes_bp["2Y_10Y"]);
+  // Read inside the reactive scope so a range change re-renders every chart.
+  const range = () => rangeKey();
+  const win = () => historyWindow(props.history, range());
+  const bands = () => windowBands(win());
+  const twoY = () =>
+    windowSeries(props.history, range(), (row) => row.yields_percent["2Y"]);
+  const tenY = () =>
+    windowSeries(props.history, range(), (row) => row.yields_percent["10Y"]);
+  const slope210 = () =>
+    windowSeries(props.history, range(), (row) => row.slopes_bp["2Y_10Y"]);
+  const twoYSummary = () => percentileSummary(twoY().windowPoints);
   return (
     <section aria-label="Curve">
       <p class="hero-kicker">Curve: true zero curve, bootstrapped</p>
@@ -226,6 +244,7 @@ export default function CurvePage(props: Props) {
           {curve()?.long_proxy_note ?? "Long end note missing."} Method{" "}
           {curve()?.method ?? "unknown"}.
         </p>
+        <RangeSelector />
         <div class="chart-card" style={{ margin: "16px 0" }}>
           <h2>History: 2Y and 10Y yields in percent</h2>
           <Show when={props.historyError}>
@@ -241,6 +260,12 @@ export default function CurvePage(props: Props) {
               yLabel="Yield (percent)"
               xKind="date"
               syncKey="curve"
+              bands={bands()}
+              note={joinNote(
+                aggregationNote(twoY().granularity),
+                percentileCaption(twoYSummary(), "percent"),
+                BAND_NOTE
+              )}
               series={[
                 { label: "2Y verified", color: "#2e7f79", points: twoY().verified },
                 {
@@ -281,6 +306,8 @@ export default function CurvePage(props: Props) {
               yLabel="Slope (basis_points)"
               xKind="date"
               syncKey="curve"
+              bands={bands()}
+              note={joinNote(aggregationNote(slope210().granularity), BAND_NOTE)}
               series={[
                 { label: "Slope verified", color: "#2e7f79", points: slope210().verified },
                 {

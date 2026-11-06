@@ -1,6 +1,7 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
+import type { ChartBand } from "../lib/types";
 
 export interface ChartPoint {
   x: number;
@@ -16,6 +17,10 @@ interface Props {
   xKind?: "number" | "date";
   /** Charts sharing a key sync crosshairs. One key per page, never across pages. */
   syncKey?: string;
+  /** Shaded x spans behind the series, applied on date axes only. */
+  bands?: ChartBand[];
+  /** Sentence appended to the caption after the default text, units always. */
+  note?: string;
 }
 
 interface BuiltData {
@@ -56,6 +61,40 @@ export function formatDateTick(epochSec: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Paint band fills on the cleared canvas. uPlot fires drawClear after
+ * clearRect and before the axes and series draw order, so shading sits
+ * behind every line. Coordinates are device pixels: valToPos with canvas
+ * pixels and the bbox clip both read the same device pixel space as the
+ * canvas backing store, and the clip keeps shading inside the plot area so
+ * axis gutters stay clean. A band outside the current x scale maps to a
+ * position past the plot edge and is clipped away rather than wrapped.
+ */
+function paintBands(u: uPlot, bands: ChartBand[]): void {
+  if (bands.length === 0) return;
+  const box = u.bbox;
+  const { left, top, width, height } = box;
+  if (![left, top, width, height].every(Number.isFinite)) return;
+  if (width <= 0 || height <= 0) return;
+  const ctx = u.ctx;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, top, width, height);
+  ctx.clip();
+  for (const band of bands) {
+    if (!(band.x1 > band.x0)) continue;
+    const x0 = u.valToPos(band.x0, "x", true);
+    const x1 = u.valToPos(band.x1, "x", true);
+    if (!Number.isFinite(x0) || !Number.isFinite(x1)) continue;
+    const start = Math.min(x0, x1);
+    const span = Math.abs(x1 - x0);
+    if (span <= 0) continue;
+    ctx.fillStyle = band.fill;
+    ctx.fillRect(start, top, span, height);
+  }
+  ctx.restore();
+}
+
 export default function Chart(props: Props) {
   let host: HTMLDivElement | undefined;
   let plot: uPlot | null = null;
@@ -64,12 +103,16 @@ export default function Chart(props: Props) {
 
   const xKind = (): "number" | "date" => props.xKind ?? "number";
 
+  /** Bands apply on date axes only, so a number axis never shades. */
+  const bandList = (): ChartBand[] =>
+    xKind() === "date" ? props.bands ?? [] : [];
+
   /**
    * Presentation signature: every option baked into uPlot construction
-   * (labels, colors, dash, width, axis kind, sync key, axis titles).
+   * (labels, colors, dash, width, axis kind, sync key, axis titles, bands).
    * Data alone flows through setData, but a signature change rebuilds
-   * the plot so stale labels, colors, dash, xKind, or sync keys never
-   * linger when the series count is unchanged.
+   * the plot so stale labels, colors, dash, xKind, sync keys, or band
+   * shading never linger when the series count is unchanged.
    */
   const signature = (): string =>
     JSON.stringify({
@@ -79,6 +122,7 @@ export default function Chart(props: Props) {
       xKind: xKind(),
       syncKey: props.syncKey ?? null,
       series: props.series.map((s) => [s.label, s.color, s.dash ?? null, s.width ?? 2]),
+      bands: bandList().map((band) => [band.x0, band.x1, band.fill]),
     });
   let lastSignature = "";
 
@@ -108,40 +152,43 @@ export default function Chart(props: Props) {
     seriesCount = props.series.length;
     lastSignature = signature();
     const kind = xKind();
-    plot = new uPlot(
-      {
-        width,
-        height: 300,
-        legend: { show: true },
-        cursor: props.syncKey
-          ? { show: true, sync: { key: props.syncKey, setSeries: true } }
-          : { show: true },
-        scales: kind === "date" ? { x: { time: true } } : undefined,
-        axes: [
-          {
-            label: props.xLabel,
-            values:
-              kind === "date"
-                ? (_u, vals) => vals.map((v) => formatDateTick(v))
-                : (_u, vals) => vals.map((v) => String(v)),
-          },
-          { label: props.yLabel },
-        ],
-        series: [
-          {},
-          ...props.series.map((s) => ({
-            label: s.label,
-            stroke: s.color,
-            width: s.width ?? 2,
-            dash: s.dash,
-            points: { show: false },
-            spanGaps: false,
-          })),
-        ],
-      },
-      built.data,
-      host
-    );
+    const bands = bandList();
+    const opts: uPlot.Options = {
+      width,
+      height: 300,
+      legend: { show: true },
+      cursor: props.syncKey
+        ? { show: true, sync: { key: props.syncKey, setSeries: true } }
+        : { show: true },
+      scales: kind === "date" ? { x: { time: true } } : undefined,
+      axes: [
+        {
+          label: props.xLabel,
+          values:
+            kind === "date"
+              ? (_u, vals) => vals.map((v) => formatDateTick(v))
+              : (_u, vals) => vals.map((v) => String(v)),
+        },
+        { label: props.yLabel },
+      ],
+      series: [
+        {},
+        ...props.series.map((s) => ({
+          label: s.label,
+          stroke: s.color,
+          width: s.width ?? 2,
+          dash: s.dash,
+          points: { show: false },
+          spanGaps: false,
+        })),
+      ],
+    };
+    // Bands are captured here, and a band change alters the signature, so
+    // the hook always paints the current shading and never a stale copy.
+    if (bands.length > 0) {
+      opts.hooks = { drawClear: [(u) => paintBands(u, bands)] };
+    }
+    plot = new uPlot(opts, built.data, host);
   };
 
   const destroyPlot = () => {
@@ -215,6 +262,7 @@ export default function Chart(props: Props) {
       )}
       <figcaption class="figure-caption">
         {props.title}: {props.yLabel}. Axis labels carry units always.
+        {props.note ? " " + props.note : ""}
       </figcaption>
     </figure>
   );

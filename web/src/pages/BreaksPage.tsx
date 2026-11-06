@@ -1,10 +1,19 @@
 import { For, Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
+import RangeSelector from "../components/RangeSelector";
 import SectionState from "../components/SectionState";
 import type { HistoryDoc, SnapshotDoc } from "../lib/types";
 import { historyRangeLabel } from "../lib/history-series";
-import { dateToEpochSec, splitSeries } from "../lib/history";
+import { dateToEpochSec } from "../lib/history";
+import {
+  aggregationNote,
+  joinNote,
+  percentileCaption,
+  windowSeries,
+} from "../lib/history-window";
+import { rangeKey } from "../lib/history-range";
+import { percentileSummary } from "../lib/percentiles";
 import { fmtBp, fmtShortSha } from "../lib/format";
 
 interface Props {
@@ -38,7 +47,11 @@ export default function BreaksPage(props: Props) {
     if (!b || !Array.isArray(b.slopes_bp)) return [];
     return b.slopes_bp.map((s, i) => ({ x: dateToEpochSec(b.dates[i] ?? ""), y: s }));
   };
-  const yield10Y = () => splitSeries(props.history, (row) => row.yields_percent["10Y"]);
+  // Read inside the reactive scope so a range change re-renders the chart.
+  const range = () => rangeKey();
+  const yield10Y = () =>
+    windowSeries(props.history, range(), (row) => row.yields_percent["10Y"]);
+  const yieldSummary = () => percentileSummary(yield10Y().windowPoints);
   return (
     <section aria-label="Breaks">
       <p class="hero-kicker">Breaks: switches suppress, never splice</p>
@@ -175,6 +188,7 @@ export default function BreaksPage(props: Props) {
               />
             </div>
           </div>
+          <RangeSelector />
           <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>History: 10Y yield with switch windows</h2>
             <Show when={props.historyError}>
@@ -189,6 +203,10 @@ export default function BreaksPage(props: Props) {
                 yLabel="Yield (percent)"
                 xKind="date"
                 syncKey="breaks"
+                note={joinNote(
+                  aggregationNote(yield10Y().granularity),
+                  percentileCaption(yieldSummary(), "percent")
+                )}
                 series={[
                   { label: "10Y verified", color: "#1d2f3a", points: yield10Y().verified },
                   {

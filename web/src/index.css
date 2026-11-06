@@ -316,6 +316,64 @@ select:focus-visible {
   color: var(--ink);
 }
 
+/* Shared range switch above the history charts: one control, one signal. */
+.range-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 16px 0;
+}
+
+.range-selector-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.range-selector-track {
+  display: inline-flex;
+  max-width: 100%;
+  border: 1px solid var(--ink);
+  background: var(--card);
+}
+
+.range-selector-option {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.range-selector-option:first-child {
+  border-left: 0;
+}
+
+.range-selector-option:hover {
+  background: var(--paper-soft);
+  color: var(--ink);
+}
+
+/* Active reads by weight as well as fill, so it never depends on color alone. */
+.range-selector-option[aria-checked="true"],
+.range-selector-option[aria-checked="true"]:hover {
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+}
+
 .alert {
   border: 2px solid var(--fail);
   background: #f8e8df;

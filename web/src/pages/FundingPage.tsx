@@ -1,11 +1,20 @@
 import { Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
+import RangeSelector from "../components/RangeSelector";
 import SectionState from "../components/SectionState";
 import type { HistoryDoc, SnapshotDoc, SpreadTenor } from "../lib/types";
 import { ALLOWED_SPREAD_TENORS } from "../lib/validate";
 import { historyRangeLabel } from "../lib/history-series";
-import { dateToEpochSec, splitSeries } from "../lib/history";
+import { dateToEpochSec } from "../lib/history";
+import {
+  aggregationNote,
+  joinNote,
+  percentileCaption,
+  windowSeries,
+} from "../lib/history-window";
+import { rangeKey } from "../lib/history-range";
+import { percentileSummary } from "../lib/percentiles";
 import { fmtBp, fmtNum } from "../lib/format";
 
 interface Props {
@@ -54,8 +63,11 @@ export default function FundingPage(props: Props) {
     });
   const carry = () => props.snapshot?.observations.carry;
   const risk = () => props.snapshot?.observations.risk;
+  // Read inside the reactive scope so a range change re-renders the chart.
+  const range = () => rangeKey();
   const spread10YHistory = () =>
-    splitSeries(props.history, (row) => row.spreads_bp["10Y"]);
+    windowSeries(props.history, range(), (row) => row.spreads_bp["10Y"]);
+  const spreadSummary = () => percentileSummary(spread10YHistory().windowPoints);
   return (
     <section aria-label="Funding">
       <p class="hero-kicker">Funding: CORRA, spreads, carry, risk</p>
@@ -179,6 +191,7 @@ export default function FundingPage(props: Props) {
             }))}
           />
         </Show>
+        <RangeSelector />
         <div class="chart-card" style={{ margin: "16px 0" }}>
           <h2>History: 10Y CA-US spread in bp</h2>
           <Show when={props.historyError}>
@@ -193,6 +206,10 @@ export default function FundingPage(props: Props) {
               yLabel="Spread (basis_points)"
               xKind="date"
               syncKey="funding"
+              note={joinNote(
+                aggregationNote(spread10YHistory().granularity),
+                percentileCaption(spreadSummary(), "basis_points")
+              )}
               series={[
                 {
                   label: "10Y spread verified",

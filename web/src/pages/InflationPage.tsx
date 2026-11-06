@@ -1,10 +1,17 @@
 import { For, Show } from "solid-js";
 import Chart from "../components/Chart";
 import DataTable from "../components/DataTable";
+import RangeSelector from "../components/RangeSelector";
 import SectionState from "../components/SectionState";
 import type { HistoryDoc, SnapshotDoc } from "../lib/types";
-import { historyRangeLabel } from "../lib/history-series";
-import { splitCpiSeries } from "../lib/history";
+import {
+  cpiAggregationNote,
+  joinNote,
+  percentileCaption,
+  windowCpiSeries,
+} from "../lib/history-window";
+import { rangeKey } from "../lib/history-range";
+import { percentileSummary } from "../lib/percentiles";
 
 interface Props {
   snapshot: SnapshotDoc | null;
@@ -22,8 +29,14 @@ export default function InflationPage(props: Props) {
   const bulkEntries = () => Object.entries(inflation()?.bulk ?? {});
   const flagState = () => (validation()?.exceeds_gate ? "fail" : "pass");
   const contributions = () => inflation()?.contributions ?? [];
-  const trimHistory = () => splitCpiSeries(props.history, (row) => row.trim_mom_percent);
-  const medianHistory = () => splitCpiSeries(props.history, (row) => row.median_mom_percent);
+  // Read inside the reactive scope so a range change re-renders the chart.
+  const range = () => rangeKey();
+  // CPI stays monthly: windowCpiSeries forces daily granularity for every range.
+  const trimHistory = () =>
+    windowCpiSeries(props.history, range(), (row) => row.trim_mom_percent);
+  const medianHistory = () =>
+    windowCpiSeries(props.history, range(), (row) => row.median_mom_percent);
+  const trimSummary = () => percentileSummary(trimHistory().windowPoints);
   return (
     <section aria-label="Inflation">
       <p class="hero-kicker">Inflation: experimental trim and median</p>
@@ -149,6 +162,7 @@ export default function InflationPage(props: Props) {
               match the leading 12 hex of each stored sha256.
             </p>
           </div>
+          <RangeSelector />
           <div class="ledger-card" style={{ margin: "16px 0" }}>
             <h2>History: trim and median in percent per month</h2>
             <Show when={props.historyError}>
@@ -163,6 +177,10 @@ export default function InflationPage(props: Props) {
                 yLabel="Rate (percent_per_month)"
                 xKind="date"
                 syncKey="inflation"
+                note={joinNote(
+                  cpiAggregationNote(),
+                  percentileCaption(trimSummary(), "percent_per_month")
+                )}
                 series={[
                   { label: "Trim verified", color: "#2e7f79", points: trimHistory().verified },
                   {
