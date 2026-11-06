@@ -508,6 +508,103 @@ describe("validateHistory closed sets and recompute", () => {
     assert.equal(MAX_HISTORY_CPI, 60);
   });
 
+  it("rejects a CPI month over month magnitude of 1e308", () => {
+    const doc = validHistoryDoc();
+    doc.cpi[0].trim_mom_percent = 1e308;
+    const { row_digest, ...body } = doc.cpi[0];
+    doc.cpi[0].row_digest = digestOf(body);
+    assert.throws(() => validateHistory(doc), /must stay within \+\/-100 percent/);
+  });
+
+  it("rejects a CPI year over year magnitude of 1e308", () => {
+    const months = [];
+    for (let i = 0; i < 12; i++) {
+      const month = "2025-" + String(i + 1).padStart(2, "0");
+      months.push(cpiRow(month, 0.2, 0.2));
+    }
+    months[11].trim_yoy_percent = 1e308;
+    const { row_digest, ...body } = months[11];
+    months[11].row_digest = digestOf(body);
+    const doc = validHistoryDoc();
+    doc.cpi = months;
+    doc.metadata.cpi_count = 12;
+    assert.throws(() => validateHistory(doc), /must stay within \+\/-100 percent/);
+  });
+
+  it("accepts a CPI month over month magnitude of 50 percent", () => {
+    const doc = validHistoryDoc();
+    for (const row of doc.cpi) {
+      row.trim_mom_percent = 50;
+      row.median_mom_percent = 50;
+      const { row_digest, ...body } = row;
+      row.row_digest = digestOf(body);
+    }
+    assert.doesNotThrow(() => validateHistory(doc));
+  });
+
+  it("rejects a CPI median month over month magnitude of 1e308", () => {
+    const doc = validHistoryDoc();
+    doc.cpi[0].median_mom_percent = 1e308;
+    const { row_digest, ...body } = doc.cpi[0];
+    doc.cpi[0].row_digest = digestOf(body);
+    assert.throws(() => validateHistory(doc), /must stay within \+\/-100 percent/);
+  });
+
+  it("rejects a CPI median year over year magnitude of 1e308", () => {
+    const months = [];
+    for (let i = 0; i < 12; i++) {
+      const month = "2025-" + String(i + 1).padStart(2, "0");
+      months.push(cpiRow(month, 0.2, 0.2));
+    }
+    let factor = 1;
+    for (let i = 0; i < 12; i++) factor *= 1 + 0.2 / 100;
+    months[11].trim_yoy_percent = (factor - 1) * 100;
+    months[11].median_yoy_percent = 1e308;
+    const { row_digest, ...body } = months[11];
+    months[11].row_digest = digestOf(body);
+    const doc = validHistoryDoc();
+    doc.cpi = months;
+    doc.metadata.cpi_count = 12;
+    assert.throws(() => validateHistory(doc), /must stay within \+\/-100 percent/);
+  });
+
+  it("accepts a CPI median month over month magnitude of exactly 100 percent", () => {
+    const doc = validHistoryDoc();
+    doc.cpi[0].median_mom_percent = 100;
+    doc.cpi[1].median_mom_percent = -100;
+    for (const row of doc.cpi) {
+      const { row_digest, ...body } = row;
+      row.row_digest = digestOf(body);
+    }
+    assert.doesNotThrow(() => validateHistory(doc));
+  });
+
+  it("rejects a CPI median month over month magnitude just over the bound", () => {
+    const doc = validHistoryDoc();
+    doc.cpi[0].median_mom_percent = 100.0001;
+    const { row_digest, ...body } = doc.cpi[0];
+    doc.cpi[0].row_digest = digestOf(body);
+    assert.throws(() => validateHistory(doc), /must stay within \+\/-100 percent/);
+  });
+
+  it("rejects a CPI median year over year magnitude just over the bound", () => {
+    const months = [];
+    for (let i = 0; i < 12; i++) {
+      const month = "2025-" + String(i + 1).padStart(2, "0");
+      months.push(cpiRow(month, 0.2, 0.2));
+    }
+    let factor = 1;
+    for (let i = 0; i < 12; i++) factor *= 1 + 0.2 / 100;
+    months[11].trim_yoy_percent = (factor - 1) * 100;
+    months[11].median_yoy_percent = 100.5;
+    const { row_digest, ...body } = months[11];
+    months[11].row_digest = digestOf(body);
+    const doc = validHistoryDoc();
+    doc.cpi = months;
+    doc.metadata.cpi_count = 12;
+    assert.throws(() => validateHistory(doc), /must stay within \+\/-100 percent/);
+  });
+
   it("accepts an index with a history entry and rejects a bad sha", () => {
     const index = {
       generated_utc: "2026-10-31T00:00:00Z",

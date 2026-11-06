@@ -349,3 +349,40 @@ export interface HistoryDoc {
   provenance: Record<string, unknown>;
   exclusions: unknown[];
 }
+
+/**
+ * History range selector keys in display order. Units: none, these are keys.
+ * This is the single source of truth; the range module re-exports the type.
+ */
+export type RangeKey = "1Y" | "3Y" | "5Y" | "10Y" | "Max";
+
+/**
+ * Granularity of an aggregated history series. daily is one print per day,
+ * weekly is one mean per UTC Monday bucket. Units: none, these are names.
+ */
+export type Granularity = "daily" | "weekly";
+
+/**
+ * Shaded chart band on a date axis. x0 and x1 are epoch seconds with x0
+ * strictly below x1. fill is a CSS color such as rgba(164, 74, 42, 0.10).
+ */
+export interface ChartBand {
+  x0: number;
+  x1: number;
+  fill: string;
+}
+
+/**
+ * Nearest rank percentile summary over one history window. p10, p50, p90, and
+ * latest carry the series unit of the input points, for example percent or
+ * basis_points. latestRankPercent is a percent from 0 to 100. count is a
+ * count of finite y values.
+ */
+export interface PercentileSummary {
+  p10: number;
+  p50: number;
+  p90: number;
+  latest: number | null;
+  latestRankPercent: number | null;
+  count: number;
+}

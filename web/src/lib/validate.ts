@@ -95,6 +95,27 @@ function assertFiniteNumber(value: unknown, path: string): asserts value is numb
   }
 }
 
+/**
+ * Closed magnitude bound for CPI percent changes, in percent. Canadian monthly
+ * and yearly CPI changes never exceed +/-20 percent in recorded history, so a
+ * generous bound of +/-100 percent never rejects real data while failing
+ * closed on absurd finite magnitudes such as 1e308, which would otherwise
+ * pass the finiteness check and later break chart autoscaling.
+ */
+const MAX_CPI_PERCENT_ABS = 100;
+
+/**
+ * Assert a CPI percent change is finite and inside the closed magnitude bound.
+ * Units: value is percent, either percent per month or percent per year, as
+ * carried by the field being validated.
+ */
+function assertCpiPercent(value: unknown, path: string): asserts value is number {
+  assertFiniteNumber(value, path);
+  if (Math.abs(value) > MAX_CPI_PERCENT_ABS) {
+    fail(path, "must stay within +/-" + MAX_CPI_PERCENT_ABS + " percent, got " + value);
+  }
+}
+
 function assertSourceId(value: unknown, path: string): asserts value is string {
   if (typeof value !== "string" || value.length === 0) {
     fail(path, "source_id must be a non empty string");
@@ -1941,16 +1962,16 @@ export function validateHistory(doc: unknown): import("./types").HistoryDoc {
     }
     assertHistoryMonth(row.month, path + ".month");
     months.push(row.month as string);
-    assertFiniteNumber(row.trim_mom_percent, path + ".trim_mom_percent");
-    assertFiniteNumber(row.median_mom_percent, path + ".median_mom_percent");
+    assertCpiPercent(row.trim_mom_percent, path + ".trim_mom_percent");
+    assertCpiPercent(row.median_mom_percent, path + ".median_mom_percent");
     trimMoms.push(row.trim_mom_percent as number);
     if (typeof row.median_component !== "string" || (row.median_component as string).length === 0) {
       fail(path + ".median_component", "must be a non empty string");
     }
     const trimYoy = row.trim_yoy_percent;
     const medianYoy = row.median_yoy_percent;
-    if (trimYoy !== null) assertFiniteNumber(trimYoy, path + ".trim_yoy_percent");
-    if (medianYoy !== null) assertFiniteNumber(medianYoy, path + ".median_yoy_percent");
+    if (trimYoy !== null) assertCpiPercent(trimYoy, path + ".trim_yoy_percent");
+    if (medianYoy !== null) assertCpiPercent(medianYoy, path + ".median_yoy_percent");
     if (row.mom_unit !== "percent_per_month") {
       fail(path + ".mom_unit", "mom unit must be percent_per_month");
     }

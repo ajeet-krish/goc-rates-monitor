@@ -2,6 +2,64 @@
 
 Last updated: 2026-11-05
 
+## 2026-11-05 - Phase 8.3: Test Report
+
+Phase 8.3 analysis engine coverage: the CPI median magnitude bound
+rejections in `web/tests/phase7-history.test.mjs` (5 new tests mirroring
+the existing trim rejection tests), plus a new
+`web/tests/phase8-83-pipeline.test.mjs` (11 tests across 3 suites) for the
+cross module pipeline on a synthetic history, the real committed history at
+Max range, and the label and aggregation wiring that Phase 8.4 depends on.
+Run with `cd web && npm test` and `npm run typecheck` in
+`/Users/ajeet/Projects/goc-rates-monitor/web`. No build-data run, so
+`web/public/data/index.json` kept its committed generated_utc.
+
+| Test | Verdict | Notes |
+| ---- | ------- | ----- |
+| npm test web (303 passed) | PASS | 49 suites, 0 fail, 287 prior plus 5 CPI median plus 11 pipeline |
+| npm run typecheck | PASS | tsc noEmit clean, exit 0 |
+| reject median_mom 1e308 | PASS | median month over month 1e308 fails with must stay within +/-100 percent, same message as the trim rejection |
+| reject median_yoy 1e308 | PASS | median year over year 1e308 fails the bound in the first row pass, before the compound check |
+| accept median_mom exactly 100 percent | PASS | closed bound accepts +100 and -100 on the two row document |
+| reject median_mom 100.0001 | PASS | one ten thousandth over the bound fails closed |
+| reject median_yoy 100.5 | PASS | just over bound fails the magnitude check before the trailing compound rule |
+| synthetic 300 row pipeline window | PASS | 300 weekday rows 2025-09-01 to 2026-10-23 span 418 days, 1Y cutoff 2025-10-23 inclusive, window holds 262 rows |
+| synthetic weekly buckets | PASS | 53 UTC Monday buckets at or below 262 daily window rows and under MAX_CHART_POINTS 2000, ascending unique x with finite means |
+| synthetic percentile on unaggregated window | PASS | count 257 equals the non null daily window count (262 minus 5 null slopes), exceeds the 53 weekly buckets, p10 at or below p50 at or below p90 |
+| synthetic window inversion bands | PASS | exact three bands (2026-03-02 to 2026-03-27, single day 2026-04-20, 2026-05-04 to 2026-05-08), x0 below x1, ascending, non overlapping, spans inside the window |
+| pre window run trimmed by cutoff | PASS | four bands without a cutoff versus three with, the 2025-09-08 to 2025-09-19 run ends before the cutoff |
+| real history shape at Max range | PASS | committed history.json holds 2494 daily rows, zero null 2Y_10Y slopes, rangeCutoff Max returns null |
+| real history weekly buckets | PASS | 523 buckets, structural bound ceil(3654 / 7) + 1 = 523, under MAX_CHART_POINTS 2000 and at or below the 2494 daily rows |
+| real history percentiles | PASS | count 2494 equals rows minus zero null slopes, p10 about -73 bp at or below p50 about 32 bp at or below p90 about 84 bp, latest finite with rank percent in range |
+| real history inversion bands | PASS | six bands ascending and non overlapping, minimum gap between x1 of one and x0 of the next is exactly 2 days (2019-12-30 run to 2020-01-02 run), last band ends inside the window |
+| granularity wiring for 1Y | PASS | re-pinned: granularityFor 1Y is daily, 3Y 5Y 10Y Max are weekly |
+| label and behavior wiring per range key | PASS | each of the five keys wires to its granularity, its aggregate behavior (daily same reference, weekly two bucket means), and its exact caption label |
+
+Coverage summary: 303 passed (web), 0 failed. Happy path covered (range
+filter then weekly buckets then unaggregated percentiles then bands end to
+end on 300 synthetic rows, the same pipeline on the real 2494 row artifact
+at Max range, per key granularity and label wiring). Edge cases covered
+(inclusive 1Y cutoff day, single day inversion run, five null slopes
+dropped from the percentile count only, exactly 100 percent closed bound
+acceptance, pre window run trimmed by cutoff, two day minimum band gap on
+real data). Error conditions covered (median_mom and median_yoy over the
+plus or minus 100 percent bound at 1e308 and just over the bound, failing
+closed before the trailing compound rule).
+
+Failure analysis: no product code defects found, all 16 new tests passed on
+the first run. One requested assertion could not hold as stated: the
+planned real history bound "weekly buckets <= 394 (2749/7 + 1)" assumes
+consecutive calendar days, but the committed history holds business days
+only (zero weekend rows across all 2494 rows), so the rows span 3654
+calendar days and touch 523 distinct UTC Monday weeks. The test asserts the
+corrected contract instead: the structural bound ceil(span / 7) + 1 = 523,
+an exact current artifact pin of 523, and the real Phase 8.4 contract of
+buckets under MAX_CHART_POINTS 2000. Recurring pattern for other agents:
+exact artifact pins (2494 rows, 523 weekly buckets, the four re-sealed
+verified dates in phase8-82) drift as soon as daily.yml runs
+`npm run build:data` before `npm test` and a new snapshot date lands, since
+the build job does not commit the rebuilt history back to the repository.
+
 ## 2026-11-05 - Phase 8 Phase 8.2: Test Report
 
 Phase 8.2 test coverage for the 10 year cap raise, print date attribution,
