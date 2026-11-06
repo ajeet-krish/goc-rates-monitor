@@ -28,6 +28,14 @@ Coverage summary: 339 passed and 1 failed (web), 0 skipped. Happy path covered (
 
 Failure analysis: one failure, and it is a genuine coverage conflict rather than a fault in the test. The Phase 8.5 units assurance asks each sampled hero dek to hold a unit token or a method id, but the `web/src/pages/InflationPage.tsx` hero dek ("StatCan seasonally adjusted values are reused as published ... replica trim and median are experimental vintages") carries neither, and `git log -p` shows no version of that dek ever carried one; this pass rewrote only its headline. The three other sampled deks pass on their own. Left unresolved pending an orchestrator decision between three options: add a quantitative clause to that dek as a copy only edit, read the method id clause loosely enough to accept the method name anchor "trim and median", or scope the units assertion to the three deks that carry units today. The two register leftovers from the copy review (`methods-content.ts` "gate honesty", `StalenessBanner.tsx` "nudge" comment) stay advisory rows in reviews.md and are deliberately outside the five phrase banned list, so the register scan is green without source edits.
 
+Resolution (2026-11-06, same phase, after this report): option one was
+taken. The `web/src/pages/InflationPage.tsx` hero dek gained the factual
+appositive "rates in percent per month" so the replica trim and median carry
+their unit, the copy stays terminal terse, and the anchor test now passes.
+Final state of the phase: `npm test` 340 tests, 340 pass, 0 fail, 58 suites;
+`npm run typecheck` clean. The two register leftovers stay advisory rows in
+reviews.md and remain outside the five phrase banned list.
+
 ## 2026-11-06 - Phase 8.4: Test Report
 
 Phase 8.4 review follow up coverage in `web/tests/phase8-84-wiring.test.mjs`
