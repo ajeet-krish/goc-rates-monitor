@@ -1,4 +1,4 @@
-# GoC Rates Monitor
+# Government of Canada Rates Monitor
 
 Live site: https://ajeet-krish.github.io/goc-rates-monitor/
 
@@ -8,13 +8,9 @@ This desk is an end of day reader, not a real time terminal: sources publish on 
 
 ## Screenshots
 
-1. ![Desk view with the bootstrapped zero curve line chart of solved zeros against tenor in years, beside the headline yield strip showing 2Y yield in percent, 10Y yield in percent, 2s10s slope in basis points, the Canada minus United States 10Y gap in basis points, and carry roll in basis points](docs/screenshots/desk.png)
-2. ![Curve page 2s10s slope history line chart in basis points with shaded inversion bands wherever the slope falls below 0 basis points, dashed backfilled spans beside solid verified spans, and a percentile caption reporting p10, p50, p90, and the latest rank percent](docs/screenshots/curve-history-inversion.png)
-3. ![Breaks page 10Y yield history line chart in percent with solid verified and dashed backfilled spans, beside the gate table that names benchmark switch windows, calendar gaps, and each suppressed day over day move in basis points](docs/screenshots/breaks-switch-windows.png)
-4. ![Curve page date comparison overlay with a dashed compare zero curve and a knot table row showing the current zero in percent yield, the earlier compare zero in percent yield, and the delta versus compare in basis points](docs/screenshots/compare-overlay.png)
-5. ![Funding page Canada minus United States spread by tenor multi series line chart in basis points for 2Y, 5Y, 10Y, and 30Y, above the spread table and the carry and risk card with carry roll, DV01, and modified duration](docs/screenshots/funding-spreads.png)
-6. ![Inflation page core inflation history multi series line chart with trim and median replica lines in percent per month, solid verified and dashed backfilled, beside the publisher final prints, the validation flag badge, and the MAE gate caption in percentage points](docs/screenshots/inflation-history.png)
-7. ![Verification page layers under check card naming the curve, inflation, and breaks method ids, above the pass and fail table of every check with its family, state, and detail including units](docs/screenshots/verification.png)
+![Zero curve line chart of solved zeros in percent yield against tenor in years, rising from about 3.2 percent at the 2 year knot to about 4.1 percent at the 30 year knot](docs/screenshots/zero_curve.png)
+
+![Curve page history of 2Y and 10Y benchmark yields in percent from 2016 to 2026 with shaded inversion bands where the 2s10s slope turns negative, dashed backfilled spans beside solid verified spans, and the range selector set to 10Y](docs/screenshots/10y_yields.png)
 
 ## Primary Features
 
