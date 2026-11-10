@@ -7,8 +7,8 @@ Static SolidJS site plus Python uv pipeline (BoC Valet, StatCan bulk, FRED) publ
 Pipeline (uv, from repo root):
 `uv sync`
 `uv run pytest`
-`uv run ruff check pipeline/src`
-`uv run ruff format pipeline/src`
+`uv run ruff check src`
+`uv run ruff format src`
 
 Web (SolidJS, from web dir):
 `cd web`
