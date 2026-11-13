@@ -1,0 +1,136 @@
+{
+  "checked_utc": "2026-11-13T22:02:52+00:00",
+  "checks": [
+    {
+      "detail": "canonical JSON round trip succeeded",
+      "id": "V01",
+      "passed": true
+    },
+    {
+      "detail": "snapshot_date 2026-11-12 parses",
+      "id": "V02",
+      "passed": true
+    },
+    {
+      "detail": "all 16 quantities carry a unit",
+      "id": "V03",
+      "passed": true
+    },
+    {
+      "detail": "benchmark labels asserted",
+      "id": "V04",
+      "passed": true
+    },
+    {
+      "detail": "T-bill price inversion diff 0.0000 bp (unit: bp)",
+      "id": "V05",
+      "passed": true
+    },
+    {
+      "detail": "CORRA 2026-11-10 to 2026-11-12",
+      "id": "V06",
+      "passed": true
+    },
+    {
+      "detail": "FRED T+1 lag note is recorded",
+      "id": "V07",
+      "passed": true
+    },
+    {
+      "detail": "StatCan SA values reused as published",
+      "id": "V08",
+      "passed": true
+    },
+    {
+      "detail": "vintage markers present",
+      "id": "V09",
+      "passed": true
+    },
+    {
+      "detail": "manifest sha256 matches raw bytes",
+      "id": "V10",
+      "passed": true
+    },
+    {
+      "detail": "cross source diff 0.0000 bp within 1.0 bp (unit: bp)",
+      "id": "V11",
+      "passed": true
+    },
+    {
+      "detail": "max age 0 business days (unit: business_days)",
+      "id": "V12",
+      "passed": true
+    },
+    {
+      "detail": "bootstrap curve stored worst 0.9312 bp within 1.0 bp (unit: bp)",
+      "id": "V13",
+      "passed": true
+    },
+    {
+      "detail": "bootstrap discounts in (0, 1] and strictly decreasing with increasing tenors and anchors (unit: unitless_ratio)",
+      "id": "V14",
+      "passed": true
+    },
+    {
+      "detail": "all 12 derived quantities carry units and a derived source (unit: mixed)",
+      "id": "V15",
+      "passed": true
+    },
+    {
+      "detail": "spreads recompute worst 0.0000 bp within 1.0 bp on same dates (unit: bp)",
+      "id": "V16",
+      "passed": true
+    },
+    {
+      "detail": "bootstrap carry diff 0.0000 bp within 1.0 bp, long zero diff 0.0000 bp, rolled zero diff 0.0000 bp; price tol 0.01 per 100, duration tol 0.0001 years, DV01 tol 1.0 per million (price 98.2659, duration 4.4021 years, DV01 432.58 per million; unit: mixed)",
+      "id": "V17",
+      "passed": true
+    },
+    {
+      "detail": "backtest 2s10s_z252_meanrev_v1 with 536 obs, next day recompute diff 0.0000 bp (unit: bp)",
+      "id": "V18",
+      "passed": true
+    },
+    {
+      "detail": "V19 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V19",
+      "passed": true
+    },
+    {
+      "detail": "V20 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V20",
+      "passed": true
+    },
+    {
+      "detail": "V21 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V21",
+      "passed": true
+    },
+    {
+      "detail": "V22 skipped, inflation missing with CPI degraded (unit: mixed)",
+      "id": "V22",
+      "passed": true
+    },
+    {
+      "detail": "breaks benchmark_switch_dod_gate_v1 with 4 tenors, dod worst 0.0000 bp within 1.0 bp, threshold 15.0 bp, feed 2026-11-01 sha beebda055035 (unit: mixed)",
+      "id": "V23",
+      "passed": true
+    },
+    {
+      "detail": "4 instruments mature after settlement with recomputed schedules within the 130 cap, incoming legs agreeing with the switch feed, and knot, instrument, and observed yields within 1.0 bp (worst 0.0000 bp; unit: mixed)",
+      "id": "V24",
+      "passed": true
+    },
+    {
+      "detail": "solver worst 0.9312 bp within 1.0 bp (anchors 0.0000 bp, zeros 0.0000 bp, reprice 0.9312 bp, yield agreement 0.0000 bp; unit: bp)",
+      "id": "V25",
+      "passed": true
+    }
+  ],
+  "failed_count": 0,
+  "passed": true,
+  "passed_count": 25,
+  "snapshot_sha256": "adda113473c2910996458ab1a4ab686aa7a2b188b85b3f2284a1b0ac50674636",
+  "tolerance_bp": 1.0,
+  "tolerance_unit": "basis_points"
+}
